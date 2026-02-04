@@ -167,7 +167,6 @@ void DebugLog(const TCHAR* format, ...)
                 && IsCurrentProcess64Bit && IsProcess64Bit && GetProcessMainThreadId && GetHwndFromPID);
     }
 
-#endif
-
+#endif // BUILDING_DLL
 
 #endif // MSGHOOK_DLL

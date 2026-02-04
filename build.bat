@@ -34,7 +34,7 @@ echo building MsgHook.exe
 windres %current_dir%src\app\resource.rc -o resource.o
 g++ -o MsgHook.exe %current_dir%src\app\MsgHookWindow.cpp resource.o -L. -static -lgdi32 -mwindows -municode -DUNICODE -D_UNICODE
 
-g++ -o MsgHookCli.exe %current_dir%src\app\MsgHookCli.cpp -L. -static -DUNICODE -D_UNICODE 
+g++ -o MsgHookCli.exe %current_dir%src\app\MsgHookCli.cpp -L. -municode -static -luser32 -DUNICODE -D_UNICODE 
 
 echo Setting permissions for ALL APPLICATION PACKAGES on MsgHook.dll
 icacls MsgHook.dll /grant "ALL APPLICATION PACKAGES":(RX)
@@ -48,7 +48,7 @@ SET "PATH=%MSYS_ROOT%\mingw32\bin;%PATH%"
 echo building MsgHook32.dll
 g++ -shared -o MsgHook32.dll %current_dir%src\dll\MsgHookDll.cpp -luser32 -lpsapi -static-libgcc -static-libstdc++ -DBUILDING_DLL -DUNICODE -D_UNICODE
 echo building MsgHookCli32.exe
-g++ -o MsgHookCli32.exe %current_dir%src\app\MsgHookCli.cpp -L. -static -DUNICODE -D_UNICODE 
+g++ -o MsgHookCli32.exe %current_dir%src\app\MsgHookCli.cpp -L. -municode -static -luser32 -DUNICODE -D_UNICODE 
 echo build test 32bit application
 g++.exe -o calculator32.exe %current_dir%src\test\BasicCalculator.cpp -mwindows -static -lcomctl32
 

@@ -5,8 +5,6 @@
 #include "../dll/MsgHookDll.h"
 #include "MsgLookup.h"
 
-#define APP_NAME _T("MsgHook")
-
 DWORD targetPid = 0;
 std::wstring targetExeName = L"";
 
@@ -101,19 +99,61 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     return DefWindowProc(hWnd, message, wParam, lParam);
 }
 
-// Main Entry Point
-int main()
+// Helper to print usage
+void PrintUsage() {
+    std::cout << "Usage: MsgHookCli.exe [PID] [ListenerHWND]\n";
+    std::cout << "Example 1 (Interactive): MsgHookCli.exe\n";
+    std::cout << "Example 2 (Hook PID 1234): MsgHookCli.exe 1234\n";
+    std::cout << "Example 3 (Hook PID 1234, Send to HWND 0xABC): MsgHookCli.exe 1234 0xABC\n";
+}
+
+// Main Entry Point, supports unicode strings
+int wmain(int argc, wchar_t* argv[])
 {
-    // Setup a minimal Invisible Window to receive messages
-    WNDCLASS wc = { 0 };
-    wc.lpfnWndProc = WndProc;
-    wc.hInstance = GetModuleHandle(NULL);
-    wc.lpszClassName = _T("MsgHookListener");
-    RegisterClass(&wc);
+    HWND hListener = NULL;
+    bool bCreatedWindow = false;
 
-    HWND hListener = CreateWindow(_T("MsgHookListener"), _T("Listener"), 
-                                  0, 0, 0, 0, 0, HWND_MESSAGE, NULL, NULL, NULL);
+    // Parse Command Line Arguments (Using Wide Strings)
+    if (argc > 1) 
+    { 
+        std::wstring arg1 = argv[1];
+        // Check for Help / Usage flags
+        if (arg1 == L"?" || arg1 == L"/?" || arg1 == L"-?" || arg1 == L"-h" || arg1 == L"--help") 
+        {
+            PrintUsage();
+            return 0;
+        }
+        // Otherwise, assume it is a numeric PID
+        targetPid = (DWORD)wcstoul(argv[1], NULL, 0); 
+        // Validation: If wcstoul returns 0 and the string wasn't "0", input was likely invalid text
+        if (targetPid == 0 && arg1 != L"0")
+        {
+            std::wcout << L"Error: Invalid Process ID specified.\n\n";
+            PrintUsage();
+            return 1;
+        }
+    }
 
+    // Check for Optional Listener HWND argument (2nd param)
+    if (argc > 2) {
+        unsigned long long hwndVal = wcstoull(argv[2], NULL, 0); 
+        hListener = (HWND)hwndVal;
+        std::wcout << L"Using external Listener HWND: " << hListener << L"\n";
+    }
+    
+    // Create Window if no external handle provided
+    if (hListener == NULL)
+    {
+        // Setup a minimal Invisible Window to receive messages
+        WNDCLASS wc = { 0 };
+        wc.lpfnWndProc = WndProc;
+        wc.hInstance = GetModuleHandle(NULL);
+        wc.lpszClassName = _T("MsgHookListener");
+        RegisterClass(&wc);
+
+        hListener = CreateWindow(_T("MsgHookListener"), _T("Listener"), 
+                                    0, 0, 0, 0, 0, HWND_MESSAGE, NULL, NULL, NULL);
+    }
     if (!hListener) 
     {
         std::cout << "Failed to create listener window.\n";
@@ -133,13 +173,15 @@ int main()
 
     InitializeMsgLookup(); // Setup message name lookup table
 
-    // User Input
-    std::cout << "Open target application to install a message hook on. \n";
-    std::cout << "Enter the target application's PID: ";
-    
-    targetPid = 0;
-    std::cin >> targetPid;
-
+    //Interactive Mode (If no PID passed)
+    if (targetPid == 0)
+    {
+        std::cout << "--- Message Hook Cli ---\n";
+        std::cout << "Open target application to install a message hook on. \n";
+        std::cout << "Enter the target application's PID: ";
+        
+        std::cin >> targetPid;
+    }
     if (targetPid == 0) 
     {
         std::cout << "Invalid PID entered.\n";
