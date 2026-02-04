@@ -377,7 +377,7 @@ int APIENTRY StartWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR l
 
 	// Extract the DLL resource if it doesn't already exist
 	//ExtractResourceRc("MSGHOOK_FILE", "DLL", MSGHOOK_DLL);
-	HMODULE hMod = LoadLibraryA(MSGHOOK_DLL);
+	HMODULE hMod = LoadLibrary(GetDllFilenameBitWise());
 	BOOL dllStatus = LoadDllFunctions(hMod);
 	if (!dllStatus)
 	{

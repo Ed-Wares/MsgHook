@@ -59,6 +59,24 @@ void CleanupSharedFileMapping();
 
 //void ExtractResource(const WORD nID, LPCTSTR szFilename);
 
+// returns the filename of the DLL based on whether it's 32-bit or 64-bit, e.g. "MsgHook32.dll" or "MsgHook.dll"
+const TCHAR* GetDllFilenameBitWise()
+{
+    // Define static buffer initialized to all zeros
+    static TCHAR s_dllFilename[MAX_PATH] = { 0 };
+    // Check if the string is empty (first time running)
+    if (s_dllFilename[0] == 0)
+    {
+        _tcscpy_s(s_dllFilename, MAX_PATH, _T("MsgHook")); //Build the string safely
+        if (sizeof(void*) == 4) // on 64-bit process this will be 8, on 32-bit it will be 4
+        {
+            _tcscat_s(s_dllFilename, MAX_PATH, _T("32"));
+        }
+        _tcscat_s(s_dllFilename, MAX_PATH, _T(".dll"));
+    }
+    return s_dllFilename;
+}
+
 // Helper to log to DebugView (Download Sysinternals DebugView to see these logs)
 void DebugLog(const TCHAR* format, ...)
 {

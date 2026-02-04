@@ -22,9 +22,10 @@
 // #endif
 
 // Need to run: objcopy --set-section-flags .shared=alloc,load,data,share MsgHook.dll
-HWND g_HostHwnd __attribute__((section(".shared"))) = NULL;
-HHOOK g_hHook __attribute__((section(".shared"))) = NULL;
-
+unsigned __int64 g_HostHwnd_Shared __attribute__((section(".shared"))) = 0;
+unsigned __int64 g_hHook_Shared    __attribute__((section(".shared"))) = 0;
+HWND g_HostHwnd = NULL;
+HHOOK g_hHook = NULL;
 
 HINSTANCE g_hInst = NULL;
 
@@ -177,6 +178,13 @@ LRESULT CALLBACK CwpHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 		if(g_hHook == NULL && pData->g_CwpHook != 0) g_hHook = (HHOOK)(pData->g_CwpHook); // update the hook handle from shared memory
 	}
 
+	// Update local cache from shared memory if needed
+	if (g_HostHwnd == NULL && g_HostHwnd_Shared != 0)
+		g_HostHwnd = (HWND)g_HostHwnd_Shared;
+
+	if (g_hHook == NULL && g_hHook_Shared != 0)
+		g_hHook = (HHOOK)g_hHook_Shared;
+
     // Always call next hook if nCode < 0
     if (nCode < 0) return CallNextHookEx(g_hHook, nCode, wParam, lParam);
 
@@ -262,10 +270,12 @@ BOOL InstallMsgHook(HWND callerHWnd, DWORD dwThreadId)
 	DebugLog(TEXT("MsgHook: InstallMsgHook() %d\n"), dwThreadId);
     if (g_hHook != NULL) return TRUE; // Already hooked
 
+	g_HostHwnd_Shared = (unsigned __int64)callerHWnd; // Store as 64-bit integer
     g_HostHwnd = callerHWnd; // Store shared HWND
     
     // Explicitly use the DLL Instance
     g_hHook = SetWindowsHookEx(WH_CALLWNDPROC, CwpHookProc, g_hInst, dwThreadId);
+	g_hHook_Shared = (unsigned __int64)g_hHook; // Store as 64-bit integer
 	DebugLog(TEXT("MsgHook: InstallMsgHook() Result: %d\n"), g_hHook != NULL);
     return (g_hHook != NULL);
 }
@@ -278,6 +288,7 @@ void UninstallMsgHook()
 		DebugLog(TEXT("MsgHook: UninstallMsgHook() \n"));
         UnhookWindowsHookEx(g_hHook);
         g_hHook = NULL;
+		g_hHook_Shared = 0;
 		if (pData != NULL) 
 		{
 			pData->g_hWnd = 0;
@@ -286,6 +297,7 @@ void UninstallMsgHook()
 		}
     }
     g_HostHwnd = NULL;
+	g_HostHwnd_Shared = 0;
 }
 
 // Called from external program to setup the shared memory and install the hook
@@ -332,7 +344,9 @@ BOOL RemoveHookWithFileMap()
 		pData->g_CwpHook = 0;
 		pData->g_CwpHookProc = 0;
         g_hHook = NULL;
+		g_hHook_Shared = 0;
     	g_HostHwnd = NULL;
+		g_HostHwnd_Shared = 0;
 		return ret;
 	}
 	return false;

@@ -29,6 +29,23 @@ double g_CurrentValue = 0.0;
 int g_LastOp = 0; // 0=None, 1=Add, 2=Sub, 3=Mul, 4=Div
 BOOL g_NewEntry = TRUE; // Flag to clear text on next number entry
 
+TCHAR g_AppTitle[40] = _T("Basic Calculator");
+
+// Helper to check if the process is 64-bit. On 32-bit systems, a pointer is 4 bytes
+bool Is64BitProcess() {
+    return (sizeof(void*) == 8);
+}
+
+// Set the application title based on whether it's 32-bit or 64-bit
+void SetAppTitleBits() {
+    if (Is64BitProcess()) {
+        _stprintf_s(g_AppTitle, 40, _T("Basic Calculator (64)"));
+    }
+    else {
+        _stprintf_s(g_AppTitle, 40, _T("Basic Calculator (32)"));
+    }
+}
+
 // Helper to set text in the display
 void SetDisplay(double value) {
     TCHAR buf[256];
@@ -79,7 +96,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
         for (int i = 0; i < 16; i++) {
             HWND hBtn = CreateWindow(_T("BUTTON"), btnLabels[i],
                 WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-                x, y, w, h, hwnd, (HMENU)btnIDs[i], GetModuleHandle(NULL), NULL);
+                x, y, w, h, hwnd, (HMENU)(INT_PTR)btnIDs[i], GetModuleHandle(NULL), NULL);
             SendMessage(hBtn, WM_SETFONT, (WPARAM)hFont, TRUE);
 
             x += 65;
@@ -180,7 +197,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
     RegisterClass(&wc);
 
-    HWND hwnd = CreateWindow(CLASS_NAME, _T("Basic Calculator"),
+    SetAppTitleBits();
+    HWND hwnd = CreateWindow(CLASS_NAME, g_AppTitle,
         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
         CW_USEDEFAULT, CW_USEDEFAULT, 300, 420,
         NULL, NULL, hInstance, NULL);
