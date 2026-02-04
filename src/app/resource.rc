@@ -1,0 +1,210 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+#include <windows.h> // REQUIRED for windres to understand WS_POPUP, etc.
+
+// Define IDC_STATIC if not already defined (common windres fix)
+#ifndef IDC_STATIC
+#define IDC_STATIC -1
+#endif
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+
+#define APSTUDIO_HIDDEN_SYMBOLS
+#include "windows.h"
+#undef APSTUDIO_HIDDEN_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// English (United States) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+
+// RESOURCE_NAME  RESOURCE_TYPE  "path/to/file"
+MSGHOOK_FILE         DLL            "MsgHook.dll"
+//IDR_MSGHOOK           BINARY  MOVEABLE PURE   "MsgHook.dll"
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDI_MSGHOOKICO          ICON                    "MsgHookTest.ico"
+IDI_SMALL               ICON                    "small.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Menu
+//
+
+IDC_MSGHOOKTEST MENU
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM "Settings",                    ID_FILE_SETTINGS
+        MENUITEM SEPARATOR
+        MENUITEM "Start Hook",                  ID_FILE_STARTHOOK
+        MENUITEM "Stop Hook",                   ID_FILE_STOPHOOK, INACTIVE
+        MENUITEM SEPARATOR
+        MENUITEM "Clear",                       ID_FILE_CLEAR
+        MENUITEM "E&xit",                       IDM_EXIT
+    END
+    POPUP "Test Msgs"
+    BEGIN
+        MENUITEM "WM_SETTEXT",                  ID_TESTMSGS_WM
+        MENUITEM "WM_COMMAND",                  ID_TESTMSGS_WMCOM
+        MENUITEM "64 bit Process Test",         ID_PROC64TEST
+    END
+    POPUP "&Help"
+    BEGIN
+        MENUITEM "&About",                      IDM_ABOUT
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Accelerator
+//
+
+IDC_MSGHOOKTEST ACCELERATORS
+BEGIN
+    "?",            IDM_ABOUT,              ASCII,  ALT
+    "/",            IDM_ABOUT,              ASCII,  ALT
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_ABOUTBOX DIALOGEX 0, 0, 170, 62
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About MsgHook"
+FONT 8, "MS Shell Dlg", 0, 0, 0x1
+BEGIN
+    ICON            128,IDC_STATIC,14,14,20,20
+    LTEXT           "MsgHook, Version 1.0",IDC_STATIC,42,14,114,8,SS_NOPREFIX
+    LTEXT           "Copyright (C) 2014",IDC_STATIC,42,26,114,8
+    DEFPUSHBUTTON   "OK",IDOK,113,41,50,14,WS_GROUP
+END
+
+IDD_DIALOG1 DIALOGEX 0, 0, 253, 183
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Settings"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,135,162,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,195,162,50,14
+    RTEXT           "Target Process Id:",IDC_STATIC,7,9,100,8
+    EDITTEXT        IDC_TARGETPID,121,7,51,14,ES_AUTOHSCROLL
+    GROUPBOX        "Filter Options:",IDC_STATIC,7,41,222,42
+    CONTROL         "WM_COMMAND",IDC_CHECK_CMD,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,17,54,78,10
+    CONTROL         "WM_NOTIFY",IDC_CHECK_NOT,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,17,66,78,10
+    CONTROL         "Above WM_USER",IDC_CHECK_ABO,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,123,54,72,10
+    GROUPBOX        "Test Message Inputs",IDC_STATIC,7,86,223,64
+    RTEXT           "WM_SETTEXT:",IDC_STATIC,18,110,59,11
+    LTEXT           "MSG NAME                    WPARAM            LPARAM",IDC_STATIC,18,97,196,8
+    RTEXT           "WM_COMMAND:",IDC_STATIC,18,125,59,11
+    EDITTEXT        IDC_WMSETW,85,109,40,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_WMSETL,139,109,40,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_WMCOMW,85,124,40,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_WMCOML,139,124,40,14,ES_AUTOHSCROLL
+    RTEXT           "Or Target HWND:",IDC_STATIC,7,24,100,11
+    EDITTEXT        IDC_HWND,121,22,51,14,ES_AUTOHSCROLL
+    CONTROL         "Custom:",IDC_CUSTOMCHK,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,123,66,40,11
+    EDITTEXT        IDC_CUSTOMMSG,163,65,55,14,ES_AUTOHSCROLL
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO
+BEGIN
+    IDD_ABOUTBOX, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 163
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 55
+    END
+
+    IDD_DIALOG1, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 246
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 176
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#ifndef APSTUDIO_INVOKED\r\n"
+    "#include <windows.h>\r\n"
+    "#endif\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE
+BEGIN
+    IDS_APP_TITLE           "Message Hook Viewer"
+    IDC_MSGHOOKTEST         "MSGHOOKVIEW"
+END
+
+#endif    // English (United States) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED

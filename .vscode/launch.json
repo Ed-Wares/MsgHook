@@ -1,0 +1,29 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "(gdb) Build and Debug",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/MsgHook.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "environment": [],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "miDebuggerPath": "C:/msys64/ucrt64/bin/gdb.exe", // <-- IMPORTANT: CHANGE THIS PATH
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            "preLaunchTask": "Build All" // <-- This is the link to tasks.json
+        }
+    ]
+}
+
+// To fix the Debugger issue: Unhandled Exception: System.IO.FileLoadException: Could not load file or assembly 'WindowsDebugLauncher, Version=14.0.0.0...
+// Install the older version 1.29.3 of the C/C++ extension for Visual Studio Code (by Microsoft)

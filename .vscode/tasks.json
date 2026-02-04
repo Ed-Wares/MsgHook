@@ -1,0 +1,127 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build DLL",
+            "type": "shell",
+            "command": "g++",
+            "args": [
+                "-g", // Include debug symbols
+                "-shared",
+                "-o",
+                "MsgHook.dll",
+                "src\\dll\\MsgHookDll.cpp",
+                "-luser32",
+                "-lpsapi",
+                "-static-libgcc",
+                "-static-libstdc++",
+                "-DBUILDING_DLL",
+                "-DUNICODE",
+                "-D_UNICODE",
+            ],
+            "group": "build",
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "Compiles the dll shared library."
+        },
+        {
+            "label": "Build Resources",
+            "type": "shell",
+            "command": "windres",
+            "args": [
+                "src\\app\\resource.rc", // Include debug symbols
+                "-o",
+                "resource.o",
+            ],
+            "group": "build",
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "Compiles the resource.rc to resource.o ."
+        },
+        {
+            "label": "Build EXE",
+            "type": "shell",
+            "command": "g++",
+            "args": [
+                "-g", // Include debug symbols
+                "-o",
+                "MsgHook.exe",
+                "src\\app\\MsgHookWindow.cpp",
+                "resource.o",
+                "-lgdi32", // Link against gdi32 library
+                "-mwindows", // Use Windows subsystem
+                "-L${workspaceFolder}", // Look for libraries in the current folder
+                "-lMsgHook", // Link against the MsgHook library
+                "-municode", // Use Unicode
+                "-DUNICODE",
+                "-D_UNICODE",
+                "-static-libgcc",
+                "-static-libstdc++",                
+            ],
+            "group": "build",
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "Compiles the main executable and links it against the DLL."
+        },
+        {
+            "label": "Share Dll",
+            "type": "shell",
+            "command": "cmd.exe",
+            "args": [
+                "/c",
+                "objcopy --set-section-flags .shared=alloc,load,data,share MsgHook.dll"
+            ],
+            "group": "build",
+            "problemMatcher": [
+            ],
+            "detail": "Shares the DLL file with proper section flags."
+        },
+        {
+            "label": "Grant Dll",
+            "type": "shell",
+            "command": "icacls",
+            "args": [
+                "MsgHook.dll",
+                "/grant",
+                "ALL APPLICATION PACKAGES:(RX)"
+            ],
+            "group": "build",
+            "problemMatcher": [
+            ],
+            "detail": "Grants permissions to the DLL file for all application packages."
+        },  
+        {
+            "label": "Remove Dll",
+            "type": "shell",
+            "command": "rm",
+            "args": [
+                "MsgHook.dll", 
+            ],
+            "group": "build",
+            "problemMatcher": [
+            ],
+            "detail": "Removes the DLL file."
+        },
+        {
+            "label": "Build All",
+            "dependsOn": [ // Run these tasks in order
+                "Build DLL",
+                "Share Dll",
+                "Grant Dll",
+                "Build Resources",
+                "Build EXE",
+                //"Remove Dll"
+            ],
+            "dependsOrder": "sequence", // Ensure DLL is built before EXE
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [],
+            "detail": "Builds the DLL and then the main executable."
+        }
+    ]
+}

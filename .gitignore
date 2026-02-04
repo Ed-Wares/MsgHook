@@ -1,0 +1,5 @@
+build/
+distrib/
+*.exe
+*.dll
+*.o
