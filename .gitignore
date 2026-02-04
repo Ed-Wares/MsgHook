@@ -1,5 +1,6 @@
-build/
-distrib/
 *.exe
 *.dll
 *.o
+build/
+distrib/
+Sysinternals/
