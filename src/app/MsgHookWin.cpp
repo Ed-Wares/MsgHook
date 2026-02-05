@@ -1,24 +1,26 @@
 /*
- * Copyright 2014, Synthuse.org
- * Released under the Apache Version 2.0 License.
+ * MsgHookWin.cpp : Creates a GUI application that can receive messages from the MsgHookDll and display them in a text box
  *
- * last modified by ejakubowski7@gmail.com
+ * Created by ejakubowski7@gmail.com
 */
 
-// MsgHookTest.cpp : Defines the entry point for the application.
-//
-
 #include <windows.h>
+#include <tchar.h>
+#include <commctrl.h> // for tooltips
+#pragma comment(lib, "comctl32.lib") // Ensure linker finds it
+#include <iostream>
+#include <string>
 #include "../dll/MsgHookDll.h"
 #include "resource.h"
 #include "MsgLookup.h"
-#include <iostream>
-#include <string>
 
-//#include "ResExtract.h"
-//#include "MsgHookTest.h"
-//#include "MsgHook.h"
 
+// Define Control IDs for the new Toolbar
+#define IDC_BTN_FINDER     2001
+#define IDC_EDIT_HWND_TB   2002
+#define IDC_EDIT_PID_TB    2003
+#define IDC_BTN_START_TB   2004
+#define TOOLBAR_HEIGHT     40
 #define MAX_LOADSTRING 100
 
 // Global Variables:
@@ -29,6 +31,20 @@ HWND mainHwnd = NULL;
 HMENU mainMenu = NULL;
 #define TXTBOX_LIMIT 700000
 HWND txtbox = NULL;
+
+BOOL isHookStarted = FALSE;
+
+// Toolbar Controls
+HWND hBtnFinder = NULL;
+HWND hEditHwnd = NULL;
+HWND hEditPid = NULL;
+HWND hBtnStartStopHook = NULL;
+HWND hToolTip = NULL;
+WNDPROC wpOldFinder = NULL; // Original window proc for the finder button
+HCURSOR hCursorCross = NULL;
+HCURSOR hCursorNormal = NULL;
+BOOL isDragging = FALSE;
+
 HWND targetHwnd = NULL;
 DWORD targetPid = 0;
 std::wstring targetExeName = L"";
@@ -42,10 +58,6 @@ bool filterWmCommand = false;
 bool filterWmNotify = false;
 bool filterCustom = false;
 bool filterAbove = false;
-
-TCHAR dll32bitName[500] = _T("");
-TCHAR dll64bitName[500] = _T("");
-char dllProcName[500] = "CwpHookProc";
 
 #define MAX_TEST_SIZE 100
 //TCHAR targetClassname[MAX_TEST_SIZE] = _T("Notepad");
@@ -69,6 +81,7 @@ ATOM				MyRegisterClass(HINSTANCE hInstance);
 BOOL				InitInstance(HINSTANCE, int);
 LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	DlgProc(HWND, UINT, WPARAM, LPARAM);
+void StartMessageHook();
 
 void AppendText(HWND txtHwnd, LPCTSTR newText)
 {
@@ -122,6 +135,121 @@ std::wstring GetFilenameFromPid(DWORD pid)
     return filename;
 }
 
+
+// --- DRAG AND DROP FINDER LOGIC ---
+
+// Helper to update UI fields based on a found window
+void UpdateTargetInfo(HWND foundHwnd)
+{
+    if (foundHwnd)
+    {
+        // Update HWND Box
+        TCHAR tmp[64];
+        _stprintf_s(tmp, _T("0x%llX"), foundHwnd);
+        SetWindowText(hEditHwnd, tmp);
+
+        // Update PID Box
+        DWORD pid = 0;
+        GetWindowThreadProcessId(foundHwnd, &pid);
+        _stprintf_s(tmp, _T("%u"), pid);
+        SetWindowText(hEditPid, tmp);
+
+        // Temporarily store in global strings (committed on mouse up)
+        _stprintf_s(targetHwndStr, _T("%llu"), (unsigned __int64)foundHwnd);
+        _stprintf_s(targetProcessId, _T("%u"), pid);
+        targetPid = pid;
+        targetHwnd = foundHwnd;
+    }
+}
+
+// Subclassed Window Procedure for the Finder Button
+LRESULT CALLBACK FinderBtnProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+    switch (uMsg)
+    {
+    case WM_LBUTTONDOWN:
+        {
+            isDragging = TRUE;
+            SetCapture(hWnd); // Capture mouse input even outside the window
+            SetCursor(hCursorCross);
+            SetWindowText(hWnd, _T("X")); // Visual cue
+        }
+        return 0;
+
+    case WM_MOUSEMOVE:
+        if (isDragging)
+        {
+            // Get global cursor position
+            POINT pt;
+            GetCursorPos(&pt);
+            
+            // Find window under cursor
+            HWND foundHwnd = WindowFromPoint(pt);
+            
+            // Highlight logic could go here (DrawFocusRect), skipped for brevity
+            
+            // Update the Toolbar Text Fields
+            if (foundHwnd != mainHwnd && foundHwnd != hWnd) // Don't pick self
+            {
+                UpdateTargetInfo(foundHwnd);
+            }
+        }
+        break;
+
+    case WM_LBUTTONUP:
+        if (isDragging)
+        {
+            isDragging = FALSE;
+            ReleaseCapture();
+            SetCursor(hCursorNormal);
+            SetWindowText(hWnd, _T("[+]")); // Reset icon text
+            
+            // Get final position
+            POINT pt;
+            GetCursorPos(&pt);
+            HWND foundHwnd = WindowFromPoint(pt);
+            if (foundHwnd != mainHwnd && foundHwnd != hWnd)
+            {
+                 UpdateTargetInfo(foundHwnd);
+                 targetExeName = GetFilenameFromPid(targetPid);
+                 TCHAR info[256];
+                 _stprintf_s(info, _T("Target Locked: %s (PID: %d)\r\n"), targetExeName.c_str(), targetPid);
+                 AppendText(txtbox, info);
+            }
+        }
+        break;
+    }
+    return CallWindowProc(wpOldFinder, hWnd, uMsg, wParam, lParam);
+}
+
+// Helper to create the tooltip window and register a tool
+void RegisterTooltip(HWND hParent, HWND hControl, LPCTSTR text)
+{
+    // Create the Tooltip Control (if it doesn't exist yet)
+    if (!hToolTip)
+    {
+        hToolTip = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL,
+            WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
+            CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+            hParent, NULL, hInst, NULL);
+
+        // Set the max width so it wraps nicely if text is long
+        SendMessage(hToolTip, TTM_SETMAXTIPWIDTH, 0, 300);
+    }
+
+    // Register the "Tool" (The button) with the Tooltip
+	TOOLINFO ti = { 0 };
+    // Use the V1 size constant to ensure compatibility even if the app doesn't have a Visual Styles manifest.
+    ti.cbSize = TTTOOLINFO_V1_SIZE; 
+    ti.uFlags = TTF_SUBCLASS | TTF_IDISHWND;
+    ti.hwnd = hParent;
+    ti.uId = (UINT_PTR)hControl;
+    ti.hinst = hInst;
+    ti.lpszText = (LPTSTR)text;
+    SendMessage(hToolTip, TTM_ADDTOOL, 0, (LPARAM)&ti);
+}
+
+// Initialize Message Filters and Lookup Table
 void InitMsgFiltersAndLookup()
 {
 	if (!filterWmCommand && !filterAbove && !filterWmNotify && !filterCustom)
@@ -161,6 +289,7 @@ void InitMsgFiltersAndLookup()
 	}
 }
 
+// Start the Message Hook by getting target info and calling the install hook function
 void StartMessageHook()
 {
 	AppendText(txtbox, _T("Starting Message Hook\r\n"));
@@ -169,6 +298,7 @@ void StartMessageHook()
 	TCHAR tmp[500];
 	
 	DWORD tid = 0;
+
 	if (_tcscmp(targetHwndStr, _T("")) != 0) //if target HWND was used
 	{
 		TCHAR *stopStr;
@@ -223,6 +353,8 @@ void StartMessageHook()
 	if (SetMsgHookWithFileMap(mainHwnd, tid))
 	//if (InstallMsgHook(mainHwnd, tid))
 	{
+		isHookStarted = true;
+		SetWindowText(hBtnStartStopHook, _T("Stop Hook"));
 		EnableMenuItem(mainMenu, ID_FILE_STOPHOOK, MF_ENABLED);
 		EnableMenuItem(mainMenu, ID_FILE_STARTHOOK, MF_DISABLED | MF_GRAYED);
 		AppendText(txtbox, _T("Hook successfully initialized\r\n"));
@@ -239,6 +371,8 @@ void StopMessageHook()
 	//KillHook();
 	RemoveHookWithFileMap();
 	//UninstallMsgHook();
+	isHookStarted = false;
+	SetWindowText(hBtnStartStopHook, _T("Start Hook"));
     MSG msg;
     while(PeekMessage(&msg, mainHwnd, WM_COPYDATA, WM_COPYDATA, PM_REMOVE))
     {
@@ -268,7 +402,7 @@ BOOL OnCopyData(COPYDATASTRUCT* pCds) // WM_COPYDATA lParam will have this struc
         GetMsgNameFromMsgId(hevent.msg, msgName, MAX_MSG_NAME);
 
         TCHAR buffer[256];
-        _stprintf_s(buffer, _T("%s[%d]: HWND: %llu | Msg: %d (%s) | wParam: %llu | lParam: %llu (%s)\n"), 
+        _stprintf_s(buffer, _T("%s[%d]: HWND: %llu | Msg: %d (%s) | wParam: %llu | lParam: %llu (%s)\r\n"), 
             targetExeName.c_str(), targetPid, hevent.hWnd, hevent.msg, msgName, hevent.wParam, hevent.lParam, pLParamStr);
         
         //OutputDebugString(buffer); // View in Visual Studio Output
@@ -342,24 +476,12 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmd
 
 int APIENTRY StartWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow)
 {
-	// get this Dlls path, by default set both 32 and 64 bit names the same
-	if (_tcscmp(dll32bitName, _T("")) == 0 && _tcscmp(dll64bitName, _T("")) == 0)
-	{
-		HMODULE hm = NULL;
-		if (!GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,(LPCWSTR) &StartWinMain, &hm))
-		{
-			int ret = GetLastError();
-			fprintf(stderr, "GetModuleHandle returned %d\n", ret);
-		}
-		//GetModuleFileName(hm, dll32bitName, sizeof(dll32bitName));
-		//GetModuleFileName(hm, dll64bitName, sizeof(dll64bitName));
-		_tcscpy_s(dll32bitName, 500, _T(MSGHOOK_DLL));
-		_tcscpy_s(dll64bitName, 500, _T(MSGHOOK_DLL)); // set MsgHookDll.dll
-		//MessageBox(0, dll32bitname, dll64bitname, 0);
-	}
 
-	UNREFERENCED_PARAMETER(hPrevInstance);
-	UNREFERENCED_PARAMETER(lpCmdLine);
+	//Initialize common controls for tooltips
+	INITCOMMONCONTROLSEX icex;
+    icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
+    icex.dwICC = ICC_WIN95_CLASSES; // Includes Tooltips, TreeViews, ListViews, etc.
+    InitCommonControlsEx(&icex);
 
  	// TODO: Place code here.
 	MSG msg;
@@ -441,7 +563,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	wcex.hInstance		= hInstance;
 	wcex.hIcon			= LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MSGHOOKICO));
 	wcex.hCursor		= LoadCursor(NULL, IDC_ARROW);
-	wcex.hbrBackground	= (HBRUSH)(COLOR_WINDOW+1);
+	wcex.hbrBackground	= (HBRUSH)(COLOR_BTNFACE+1); // Use button face color for background
 	wcex.lpszMenuName	= MAKEINTRESOURCE(IDC_MSGHOOKTEST);
 	wcex.lpszClassName	= szWindowClass;
 	wcex.hIconSm		= LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
@@ -466,7 +588,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
    hInst = hInstance; // Store instance handle in our global variable
 
    hWnd = CreateWindow(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-      CW_USEDEFAULT, 0, 700, 300, NULL, NULL, hInstance, NULL);
+      CW_USEDEFAULT, 0, 750, 400, NULL, NULL, hInstance, NULL);
 
    if (!hWnd) {
 	    DWORD lastErr = GetLastError();
@@ -475,21 +597,13 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 		return FALSE;
    }
    mainHwnd = hWnd;
-   
-   RECT rect;
-   GetClientRect(hWnd, &rect);
-   // make the txtbox edit control almost the same size as the parent window
-   //WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL
-   txtbox = CreateWindow(TEXT("Edit"),TEXT(""), WS_CHILD | WS_VISIBLE | ES_MULTILINE | WS_VSCROLL | ES_AUTOVSCROLL | ES_READONLY, 
-	   txtboxSpacing, txtboxSpacing,rect.right-(txtboxSpacing*2), rect.bottom-(txtboxSpacing*2), hWnd, NULL, NULL, NULL);
-   SendMessage(txtbox, EM_SETLIMITTEXT, (WPARAM)TXTBOX_LIMIT, 0);
-
-   HFONT hFont = CreateFont(14, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, ANSI_CHARSET, 
-	  OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, 
-	  DEFAULT_PITCH | FF_DONTCARE, TEXT("Arial"));
-   SendMessage(txtbox, WM_SETFONT, (WPARAM)hFont, TRUE);
 
    mainMenu = GetMenu(mainHwnd);
+
+   // Create standard cursors for Drag operation
+   hCursorNormal = LoadCursor(NULL, IDC_ARROW);
+   hCursorCross  = LoadCursor(NULL, IDC_CROSS);
+
    EnableMenuItem(mainMenu, ID_FILE_STOPHOOK, MF_DISABLED | MF_GRAYED);
 
    RegisterHotKey(mainHwnd, pauseHotKey + hotkeyIdOffset, MOD_NOREPEAT | MOD_SHIFT | MOD_CONTROL, pauseHotKey); // CTRL + SHIFT + P
@@ -501,6 +615,64 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
    SetWindowPos(mainHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE| SWP_NOMOVE);
 
    return TRUE;
+}
+
+void CreateChildWins(HWND hWnd)
+{
+    // Allow applications to send WM_COPYDATA to us
+    ChangeWindowMessageFilter(WM_COPYDATA, MSGFLT_ADD); 
+
+    HFONT hFont = CreateFont(14, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, ANSI_CHARSET, 
+        OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, TEXT("Arial"));
+
+    // --- TOOLBAR UI ---
+    int x = 5; int y = 5; int spacing = 10;
+
+    // Finder Button (Target Icon)
+    hBtnFinder = CreateWindow(_T("BUTTON"), _T("[+]"), 
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_CENTER,
+        x, y, 30, 30, hWnd, (HMENU)IDC_BTN_FINDER, hInst, NULL);
+	//Create tooltip for finder button
+	RegisterTooltip(hWnd, hBtnFinder, _T("Drag this Icon over a target window to select it."));
+    
+    // Subclass the button to handle dragging
+    wpOldFinder = (WNDPROC)SetWindowLongPtr(hBtnFinder, GWLP_WNDPROC, (LONG_PTR)FinderBtnProc);
+    x += 30 + spacing;
+
+    // HWND Label & Edit
+    CreateWindow(_T("STATIC"), _T("HWND:"), WS_CHILD | WS_VISIBLE, x, y+6, 55, 20, hWnd, NULL, hInst, NULL);
+    x += 55;
+    hEditHwnd = CreateWindow(_T("EDIT"), _T(""), WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | ES_READONLY, 
+        x, y+5, 90, 20, hWnd, (HMENU)IDC_EDIT_HWND_TB, hInst, NULL);
+	//Create tooltip for HWND edit box
+	RegisterTooltip(hWnd, hEditHwnd, _T("Displays the handle of the selected target window."));
+    SendMessage(hEditHwnd, WM_SETFONT, (WPARAM)hFont, TRUE);
+    x += 90 + spacing;
+
+    // PID Label & Edit
+    CreateWindow(_T("STATIC"), _T("PID:"), WS_CHILD | WS_VISIBLE, x, y+6, 35, 20, hWnd, NULL, hInst, NULL);
+    x += 35;
+    hEditPid = CreateWindow(_T("EDIT"), _T(""), WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | ES_READONLY, 
+        x, y+5, 70, 20, hWnd, (HMENU)IDC_EDIT_PID_TB, hInst, NULL);
+	//Create tooltip for PID edit box
+	RegisterTooltip(hWnd, hEditPid, _T("Displays the process ID of the selected target window."));
+    SendMessage(hEditPid, WM_SETFONT, (WPARAM)hFont, TRUE);
+    x += 70 + spacing;
+
+    // Start and stop Hook Button
+    hBtnStartStopHook = CreateWindow(_T("BUTTON"), _T("Start Hook"), 
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        x, y, 100, 30, hWnd, (HMENU)IDC_BTN_START_TB, hInst, NULL);
+	//Create tooltip for start/stop button
+	RegisterTooltip(hWnd, hBtnStartStopHook, _T("Start or Stop the Message Hooking into the target process."));
+    
+    // MAIN LOG TxtBOX
+    txtbox = CreateWindow(TEXT("Edit"),TEXT(""), 
+        WS_CHILD | WS_VISIBLE | ES_MULTILINE | WS_VSCROLL | ES_AUTOVSCROLL | ES_READONLY, 
+        0, 0, 0, 0, hWnd, NULL, NULL, NULL); // Sized in WM_SIZE
+    
+    SendMessage(txtbox, EM_SETLIMITTEXT, (WPARAM)TXTBOX_LIMIT, 0);
+    SendMessage(txtbox, WM_SETFONT, (WPARAM)hFont, TRUE);
 }
 
 //
@@ -521,10 +693,20 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 	switch (message)
 	{
+    case WM_CTLCOLORSTATIC:
+        {
+            HDC hdc = (HDC)wParam;
+            HWND hCtrl = (HWND)lParam;
+            if (hCtrl == txtbox) // Check if the control asking for color is our Log txtbox
+            {
+                SetBkColor(hdc, RGB(255, 255, 255)); // Text Background = White
+                SetTextColor(hdc, RGB(0, 0, 0));     // Text Color = Black
+                return (INT_PTR)GetStockObject(WHITE_BRUSH); // Box Background = White
+            }
+        }        
+        break;
     case WM_CREATE:
-        // Allow applications to send WM_COPYDATA to us
-        ChangeWindowMessageFilter(WM_COPYDATA, MSGFLT_ADD); 
-		//appendText(txtbox, TEXT("test\r\n"));
+        CreateChildWins(hWnd);
 		break;
 	case WM_COPYDATA:
 		return (OnCopyData((COPYDATASTRUCT *) lParam));
@@ -534,6 +716,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		// Parse the menu selections:
 		switch (wmId)
 		{
+        case IDC_BTN_START_TB: // Toolbar Start Button
+			if (isHookStarted) 
+			{
+				StopMessageHook();
+			}
+			else 
+			{
+				StartMessageHook();
+			}
+			break;
 		case ID_FILE_STARTHOOK:
 			StartMessageHook();
 			break;
@@ -594,11 +786,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		EndPaint(hWnd, &ps);
 		break;
 	case WM_SIZE:
-		{ //resize the txtbox when the parent window size changes
-			int nWidth = LOWORD(lParam);
-			int nHeight = HIWORD(lParam);
-			SetWindowPos(txtbox, HWND_NOTOPMOST, txtboxSpacing, txtboxSpacing, nWidth-(txtboxSpacing*2), nHeight-(txtboxSpacing*2), SWP_NOZORDER|SWP_NOMOVE);
-		}
+        { 
+            // Resize logic: Keep Toolbar fixed at top, stretch Edit Box below it
+            int nWidth = LOWORD(lParam);
+            int nHeight = HIWORD(lParam);
+            // Log Box starts below Toolbar Height
+            int logY = TOOLBAR_HEIGHT + txtboxSpacing;
+            int logH = nHeight - logY - txtboxSpacing;
+            if (logH < 0) logH = 0;
+            SetWindowPos(txtbox, HWND_NOTOPMOST, txtboxSpacing, logY, nWidth-(txtboxSpacing*2), logH, SWP_NOZORDER);
+        }
 		break;
 	case WM_DESTROY:
 		PostQuitMessage(0);

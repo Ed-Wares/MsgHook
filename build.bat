@@ -32,7 +32,7 @@ objdump -h MsgHook.dll | findstr SHARED
 
 echo building MsgHook.exe
 windres %current_dir%src\app\resource.rc -o resource.o
-g++ -o MsgHook.exe %current_dir%src\app\MsgHookWindow.cpp resource.o -L. -static -lgdi32 -mwindows -municode -DUNICODE -D_UNICODE
+g++ -o MsgHook.exe %current_dir%src\app\MsgHookWin.cpp resource.o -L. -static -lgdi32 -lcomctl32 -mwindows -municode -DUNICODE -D_UNICODE
 
 g++ -o MsgHookCli.exe %current_dir%src\app\MsgHookCli.cpp -L. -municode -static -luser32 -DUNICODE -D_UNICODE 
 
