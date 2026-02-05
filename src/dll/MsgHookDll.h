@@ -26,14 +26,14 @@
 // Structure to hold hook event data to send via WM_COPYDATA
 typedef struct
 {
-	HWND hWnd;
+	unsigned __int64 hWnd; // Use 'unsigned __int64' to force 8-byte storage for handles, supporting both 32-bit and 64-bit processes
 	int nCode;
     int msg;
 	DWORD dwHookType;
-	WPARAM wParam;
-	LPARAM lParam;
-	DWORD wParamLen;
-    DWORD lParamLen;
+    DWORD lParamLen; //Padding Warning: We have 4+4+4 = 12 bytes here. The next field (wParam) is 8 bytes.
+    // The compiler will add 4 bytes of padding here if this isn't a DWORD(4 bytes) on 64-bit, but not 32-bit!
+	unsigned __int64 wParam;
+	unsigned __int64 lParam;
     // No actual string arrays here! They will follow in memory packed.
 }HEVENT;
 

@@ -58,11 +58,7 @@ BOOL OnCopyData(COPYDATASTRUCT* pCds) // WM_COPYDATA lParam will have this struc
         // The wParam and LParam string data starts immediately after the HEVENT struct
         BYTE* pRawData = (BYTE*)pCds->lpData + sizeof(HEVENT);
         wchar_t emptyBuffer[] = L"";
-        const wchar_t* pWParamStr = (wchar_t*)pRawData; // Point to wParam String
-        // Point to lParam String (It starts after wParam string ends)
-        const wchar_t* pLParamStr = (wchar_t*)(pRawData + hevent.wParamLen);
-        if (hevent.wParamLen == 0)
-            pWParamStr = emptyBuffer;
+        const wchar_t* pLParamStr = (wchar_t*)pRawData; // LParam string starts immediately after the HEVENT struct
         if (hevent.lParamLen == 0)
             pLParamStr = emptyBuffer;
 
@@ -70,8 +66,8 @@ BOOL OnCopyData(COPYDATASTRUCT* pCds) // WM_COPYDATA lParam will have this struc
         GetMsgNameFromMsgId(hevent.msg, msgName, MAX_MSG_NAME);
 
         TCHAR buffer[256];
-        _stprintf_s(buffer, _T("%s[%d]: HWND: %p | Msg: %d (%s) | wParam: %llu | lParam: %llu (%s)\n"), 
-            targetExeName.c_str(), targetPid, hevent.hWnd, hevent.msg, msgName, (unsigned __int64)hevent.wParam, (unsigned __int64)hevent.lParam, pLParamStr);
+        _stprintf_s(buffer, _T("%s[%d]: HWND: %llu | Msg: %d (%s) | wParam: %llu | lParam: %llu (%s)\n"), 
+            targetExeName.c_str(), targetPid, hevent.hWnd, hevent.msg, msgName, hevent.wParam, hevent.lParam, pLParamStr);
         
         //OutputDebugString(buffer); // View in Visual Studio Output
         std::wcout << buffer;      // View in Console

@@ -210,18 +210,36 @@ LRESULT CALLBACK CwpHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 
 			// use plain C string logic ---
             wchar_t* pLParamStr = NULL;
-            wchar_t* pWParamStr = NULL; // Usually empty
-
-            if (cwps->message == WM_SETTEXT && cwps->lParam != 0)
-            {
-                pLParamStr = ConvertParamToWide((void*)cwps->lParam, IsWindowUnicode(cwps->hwnd));
-            }
+			if (cwps->lParam != 0)
+			{
+				switch (cwps->message)				// --- DIRECT STRING MESSAGES ---
+				{
+					case WM_SETTEXT:
+					case WM_SETTINGCHANGE: // includes WM_WININICHANGE
+					case EM_REPLACESEL:
+					case LB_ADDSTRING:
+					case LB_INSERTSTRING:
+					case LB_SELECTSTRING:
+					case LB_DIR:
+					case LB_FINDSTRING:
+					case LB_FINDSTRINGEXACT:
+					case CB_ADDSTRING:
+					case CB_INSERTSTRING:
+					case CB_SELECTSTRING:
+					case CB_DIR:
+					case CB_FINDSTRING:
+					case CB_FINDSTRINGEXACT: // For common messages that directly take string parameters, convert them to wide strings for easier handling in the host app
+						pLParamStr = ConvertParamToWide((void*)cwps->lParam, IsWindowUnicode(cwps->hwnd));
+						break;
+					default: // Do not convert lparam for other messages (mouse moves, paints, etc.)
+						break;
+				}
+			}
 
             // Calculate Sizes
             DWORD lSize = (pLParamStr) ? (lstrlenW(pLParamStr) + 1) * sizeof(wchar_t) : 0;
-            DWORD wSize = 0;
             DWORD headerSize = sizeof(HEVENT);
-            DWORD totalSize = headerSize + lSize + wSize;
+            DWORD totalSize = headerSize + lSize; // wParam string is usually empty, so we skip it
 
             // Allocate PACKED buffer using Windows Heap
             BYTE* buffer = (BYTE*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, totalSize);
@@ -230,11 +248,10 @@ LRESULT CALLBACK CwpHookProc(int nCode, WPARAM wParam, LPARAM lParam)
             {
                 // Fill Header
                 HEVENT* hEvent = (HEVENT*)buffer;
-                hEvent->hWnd = cwps->hwnd;
+                hEvent->hWnd = (unsigned __int64) cwps->hwnd;
                 hEvent->msg = cwps->message;
-                hEvent->wParam = cwps->wParam;
-                hEvent->lParam = cwps->lParam;
-                hEvent->wParamLen = 0;
+                hEvent->wParam = (unsigned __int64)cwps->wParam;
+                hEvent->lParam = (unsigned __int64)cwps->lParam;
                 hEvent->lParamLen = lSize;
 
                 // Copy String Data
@@ -253,9 +270,7 @@ LRESULT CALLBACK CwpHookProc(int nCode, WPARAM wParam, LPARAM lParam)
 
                 HeapFree(GetProcessHeap(), 0, buffer); // Cleanup Buffer
             }
-
-            // Cleanup Strings
-            if (pLParamStr) HeapFree(GetProcessHeap(), 0, pLParamStr);
+            if (pLParamStr) HeapFree(GetProcessHeap(), 0, pLParamStr); // Cleanup Strings
         }
     }
     return CallNextHookEx(g_hHook, nCode, wParam, lParam);
