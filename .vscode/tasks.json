@@ -48,17 +48,16 @@
                 "-g", // Include debug symbols
                 "-o",
                 "MsgHook.exe",
-                "src\\app\\MsgHookWindow.cpp",
+                "src\\app\\MsgHookWin.cpp",
                 "resource.o",
-                "-lgdi32", // Link against gdi32 library
-                "-mwindows", // Use Windows subsystem
-                "-L${workspaceFolder}", // Look for libraries in the current folder
-                "-lMsgHook", // Link against the MsgHook library
-                "-municode", // Use Unicode
+                "-static",
+                "-lgdi32",
+                "-lcomctl32",
+                "-mwindows",
+                "-municode",
                 "-DUNICODE",
                 "-D_UNICODE",
-                "-static-libgcc",
-                "-static-libstdc++",                
+                "-L${workspaceFolder}" // Look for libraries in the current folder        
             ],
             "group": "build",
             "problemMatcher": [

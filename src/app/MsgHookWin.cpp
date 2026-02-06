@@ -24,12 +24,14 @@
 #define MAX_LOADSTRING 100
 
 // Global Variables:
+#define TXTBOX_LIMIT 700000
+#define MSGHOOKCLI32_EXE L"MsgHookCli32.exe"
+
 HINSTANCE hInst;								// current instance
 TCHAR szTitle[MAX_LOADSTRING];					// The title bar text
 TCHAR szWindowClass[MAX_LOADSTRING];			// the main window class name
 HWND mainHwnd = NULL;
 HMENU mainMenu = NULL;
-#define TXTBOX_LIMIT 700000
 HWND txtbox = NULL;
 
 BOOL isHookStarted = FALSE;
@@ -222,6 +224,26 @@ LRESULT CALLBACK FinderBtnProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPara
     return CallWindowProc(wpOldFinder, hWnd, uMsg, wParam, lParam);
 }
 
+// Helper to drill down from the Windows 10/11 "ApplicationFrameHost" wrapper to the actual UWP window (Windows.UI.Core.CoreWindow).
+HWND GetRealUwpWindow(HWND hParent)
+{
+    TCHAR className[256];
+    if (hParent != NULL && GetClassName(hParent, className, 256))
+    {
+        // Check if we grabbed the generic wrapper frame
+        if (_tcscmp(className, _T("ApplicationFrameWindow")) == 0)
+        {
+            // Find the immediate child. UWP apps usually host their content in "Windows.UI.Core.CoreWindow"
+            HWND hChild = FindWindowEx(hParent, NULL, _T("Windows.UI.Core.CoreWindow"), NULL);
+            if (hChild) 
+            {
+                return hChild;
+            }
+        }
+    }
+    return hParent; // Return original if it wasn't a wrapper
+}
+
 // Helper to create the tooltip window and register a tool
 void RegisterTooltip(HWND hParent, HWND hControl, LPCTSTR text)
 {
@@ -303,6 +325,7 @@ void StartMessageHook()
 	{
 		TCHAR *stopStr;
 		targetHwnd = (HWND)_tcstoull(targetHwndStr, &stopStr, 10);
+		targetHwnd = GetRealUwpWindow(targetHwnd); // If it's a UWP wrapper, drill down to the real window
 		tid = GetWindowThreadProcessId(targetHwnd, NULL);
 		_stprintf_s(tmp, _T("Target Handle: %ld, and Thread Id: %ld\r\n"), targetHwnd, tid);
 	}
@@ -312,17 +335,23 @@ void StartMessageHook()
 	{
 		TCHAR *stopStr;
 		targetPid = (DWORD)_tcstoull(targetProcessId, &stopStr, 10);
-		//tid = GetProcessMainThreadId(targetPid);
 		targetHwnd = GetHwndFromPID(targetPid);
-		tid = GetWindowThreadProcessId(targetHwnd, NULL);
+		DWORD new_tid = GetWindowThreadProcessId(targetHwnd, NULL);
+		if (new_tid != 0) tid = new_tid;
 		targetExeName = GetFilenameFromPid(targetPid);
 		_stprintf_s(tmp, _T("Application: %s, Target PId: %ld, and Thread Id: %ld\r\n"), targetExeName.c_str(), targetPid, tid);		
 	}
-	
+	AppendText(txtbox, tmp);
+	if (targetPid == 0 && targetHwnd != NULL) // if only target hwnd was used, try to fill in the pid and exe name for better info display and filtering
+	{
+		tid = GetWindowThreadProcessId(targetHwnd, &targetPid);
+		targetExeName = GetFilenameFromPid(targetPid);
+		_stprintf_s(tmp, _T("Application: %s, Target PId: %ld, and Thread Id: %ld\r\n"), targetExeName.c_str(), targetPid, tid);		
+		return;
+	}
+
 	InitMsgFiltersAndLookup();
 	//InitializeMsgLookup();
-
-	AppendText(txtbox, tmp);
 	
 	//block self/global msg hook
 	if (tid == 0) {
@@ -333,22 +362,36 @@ void StartMessageHook()
 	if (targetPid != 0) // handle various types of bit matching
 	{
 		BOOL current64bit = IsCurrentProcess64Bit();
-		if (IsProcess64Bit(targetPid) && current64bit)
+		BOOL target64bit = IsProcess64Bit(targetPid);
+		std::wstring targetBitness = IsProcess64Bit(targetPid) ? L"64-bit" : L"32-bit";
+		if (current64bit == target64bit)
 		{
-			_stprintf_s(tmp, _T("Target PId (%ld) is a matching 64 bit process\r\n"), targetPid);
-		}
-		else if(!IsProcess64Bit(targetPid) && !current64bit)
-		{
-			_stprintf_s(tmp, _T("Target PId (%ld) is a matching 32 bit process\r\n"), targetPid);
+			_stprintf_s(tmp, _T("Target PId (%ld) is a matching %s process\r\n"), targetPid, targetBitness.c_str());
+			AppendText(txtbox, tmp);
 		}
 		else
 		{
-			if (current64bit)
-				_stprintf_s(tmp, _T("Target PId (%ld) is a not matching 64 bit process.\r\n"), targetPid);
+			_stprintf_s(tmp, _T("Target PId (%ld) is a NOT matching %s process.\r\n"), targetPid, targetBitness.c_str());
+			AppendText(txtbox, tmp);
+			std::wstring cmdLine = std::wstring(MSGHOOKCLI32_EXE) + L" " + std::to_wstring(targetPid) + L" " + std::to_wstring((DWORD)(ULONG_PTR)mainHwnd);
+			_stprintf_s(tmp, _T("Launching %s to hook the target process...\r\n"), cmdLine.c_str());
+			AppendText(txtbox, tmp);
+			// Launch the 32-bit helper if target is 32-bit and we're 64-bit (since 64-bit processes can't inject into 32-bit processes)
+			STARTUPINFO si = { sizeof(si) };
+			PROCESS_INFORMATION pi;
+			if (CreateProcess(NULL, cmdLine.data(), NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
+			{
+				CloseHandle(pi.hProcess);
+				CloseHandle(pi.hThread);
+				return; // Exit the 64-bit launcher since the 32-bit helper is now running
+			}
 			else
-				_stprintf_s(tmp, _T("Target PId (%ld) is a not matching 32 bit process.\r\n"), targetPid);
+			{
+				_stprintf_s(tmp, _T("Failed to launch %s. Error: %d\r\n"), MSGHOOKCLI32_EXE, GetLastError());
+				AppendText(txtbox, tmp);
+				return;
+			}
 		}
-		AppendText(txtbox, tmp);
 	}
 	if (SetMsgHookWithFileMap(mainHwnd, tid))
 	//if (InstallMsgHook(mainHwnd, tid))
