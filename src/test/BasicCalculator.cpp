@@ -24,12 +24,14 @@
 
 // Global variables for calculator state
 HWND hEdit;
+WNDPROC OldEditProc; // To store the original Edit Control procedure
 double g_StoredValue = 0.0;
 double g_CurrentValue = 0.0;
 int g_LastOp = 0; // 0=None, 1=Add, 2=Sub, 3=Mul, 4=Div
 BOOL g_NewEntry = TRUE; // Flag to clear text on next number entry
 
-TCHAR g_AppTitle[40] = _T("Basic Calculator");
+#define APP_TITLE _T("Basic Calculator")
+TCHAR g_AppTitle[40] = APP_TITLE;
 
 // Helper to check if the process is 64-bit. On 32-bit systems, a pointer is 4 bytes
 bool Is64BitProcess() {
@@ -39,10 +41,10 @@ bool Is64BitProcess() {
 // Set the application title based on whether it's 32-bit or 64-bit
 void SetAppTitleBits() {
     if (Is64BitProcess()) {
-        _stprintf_s(g_AppTitle, 40, _T("Basic Calculator (64)"));
+        _stprintf_s(g_AppTitle, 40, _T("%s (64)"), APP_TITLE);
     }
     else {
-        _stprintf_s(g_AppTitle, 40, _T("Basic Calculator (32)"));
+        _stprintf_s(g_AppTitle, 40, _T("%s (32)"), APP_TITLE);
     }
 }
 
@@ -60,14 +62,117 @@ double GetDisplay() {
     return _tcstod(buf, NULL);
 }
 
+// Perform calculation based on stored state
+void DoCalculation() {
+    double current = GetDisplay();
+    double result = g_StoredValue;
+
+    switch (g_LastOp) {
+    case 1: result += current; break;
+    case 2: result -= current; break;
+    case 3: result *= current; break;
+    case 4: if (current != 0) result /= current; else result = 0; break;
+    }
+
+    SetDisplay(result);
+    g_StoredValue = result; // Allow chaining
+    g_NewEntry = TRUE;
+    g_LastOp = 0;
+}
+
+// Helper to handle operator logic
+void HandleOperator(int opCode) {
+    g_StoredValue = GetDisplay();
+    g_NewEntry = TRUE;
+    g_LastOp = opCode;
+}
+
+// Subclassed Edit Control Procedure
+// This intercepts keyboard input BEFORE the Edit control sees it.
+// Subclassed Edit Control Procedure
+LRESULT CALLBACK EditProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    switch (uMsg) {
+    // Trapping Focus and Click events. These standard events cause Windows to show the caret. We let Windows do 
+    // its work (setting focus state) and then immediately hide the caret.
+    case WM_SETFOCUS:
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+    case WM_MOUSEMOVE: // Sometimes dragging selects text and shows caret
+    {
+        LRESULT ret = CallWindowProc(OldEditProc, hwnd, uMsg, wParam, lParam);
+        HideCaret(hwnd); 
+        return ret;
+    }
+
+    // Trapping Input
+    case WM_CHAR:
+        // Handle Numbers (0-9)
+        if (wParam >= '0' && wParam <= '9') {
+            if (g_NewEntry) {
+                SetWindowText(hwnd, _T(""));
+                g_NewEntry = FALSE;
+            }
+            // Pass to default handler so the number appears
+            LRESULT ret = CallWindowProc(OldEditProc, hwnd, uMsg, wParam, lParam);
+            HideCaret(hwnd); // Hide caret again after typing
+            return ret;
+        }
+        // Handle Operators
+        else if (wParam == '+') { HandleOperator(1); return 0; }
+        else if (wParam == '-') { HandleOperator(2); return 0; }
+        else if (wParam == '*') { HandleOperator(3); return 0; }
+        else if (wParam == '/') { HandleOperator(4); return 0; }
+        
+        // Handle Enter/Equals
+        else if (wParam == VK_RETURN || wParam == '=') {
+            DoCalculation();
+            SendMessage(hwnd, EM_SETSEL, 0, -1); // Select all text result
+            HideCaret(hwnd); 
+            return 0; 
+        }
+        // Handle Backspace
+        else if (wParam == VK_BACK) {
+            LRESULT ret = CallWindowProc(OldEditProc, hwnd, uMsg, wParam, lParam);
+            HideCaret(hwnd);
+            return ret;
+        }
+        // Handle Dot
+        else if (wParam == '.') {
+            TCHAR currentText[256];
+            GetWindowText(hwnd, currentText, 256);
+            if (_tcschr(currentText, '.') == NULL) {
+                if (g_NewEntry) {
+                    SetWindowText(hwnd, _T("0."));
+                    g_NewEntry = FALSE;
+                    SendMessage(hwnd, EM_SETSEL, 2, 2); 
+                    HideCaret(hwnd);
+                    return 0;
+                }
+                // Allow default dot
+                LRESULT ret = CallWindowProc(OldEditProc, hwnd, uMsg, wParam, lParam);
+                HideCaret(hwnd);
+                return ret;
+            }
+            return 0; // Ignore second dot
+        }
+        return 0; // Swallow other keys (letters)
+    }
+
+    return CallWindowProc(OldEditProc, hwnd, uMsg, wParam, lParam);
+}
+
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
     case WM_CREATE:
     {
         // 1. Create Display (Edit Control)
+        // REMOVED: ES_READONLY
         hEdit = CreateWindowEx(WS_EX_CLIENTEDGE, _T("EDIT"), _T("0"),
-            WS_CHILD | WS_VISIBLE | WS_BORDER | ES_RIGHT | ES_READONLY,
+            WS_CHILD | WS_VISIBLE | WS_BORDER | ES_RIGHT,
             10, 10, 260, 30, hwnd, (HMENU)ID_EDIT, GetModuleHandle(NULL), NULL);
+
+        // Subclass the Edit Control
+        OldEditProc = (WNDPROC)SetWindowLongPtr(hEdit, GWLP_WNDPROC, (LONG_PTR)EditProc);
 
         // Define Fonts
         HFONT hFont = CreateFont(24, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
@@ -108,39 +213,29 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
             10, 310, 255, 50, hwnd, (HMENU)ID_BTN_EQUALS, GetModuleHandle(NULL), NULL);
         SendMessage(hEq, WM_SETFONT, (WPARAM)hFont, TRUE);
+
+        // Set Focus to Edit control immediately so user can type
+        SetFocus(hEdit);
     }
     break;
 
     case WM_COMMAND:
     {
         int id = LOWORD(wParam);
+        
+        // --- Keep Focus on Edit box even after clicking buttons ---
+        // We do this at the end of the logic usually, but here we can just ensure
+        // focus returns to hEdit if a button was clicked.
+        if (id >= 1000) SetFocus(hEdit);
 
         // --- Number Buttons ---
         if (id >= ID_BTN_0 && id <= ID_BTN_9) {
-            TCHAR currentText[256];
-            if (g_NewEntry) {
-                _tcscpy_s(currentText, 256, _T(""));
-                g_NewEntry = FALSE;
-            }
-            else {
-                GetWindowText(hEdit, currentText, 256);
-                if (_tcscmp(currentText, _T("0")) == 0) _tcscpy_s(currentText, 256, _T(""));
-            }
-
-            TCHAR digit[2];
-            _stprintf_s(digit, 2, _T("%d"), id - ID_BTN_0);
-            _tcscat_s(currentText, 256, digit);
-            SetWindowText(hEdit, currentText);
+            // Simulate keyboard input for consistency
+            SendMessage(hEdit, WM_CHAR, '0' + (id - ID_BTN_0), 0);
         }
         // --- Dot ---
         else if (id == ID_BTN_DOT) {
-            TCHAR currentText[256];
-            GetWindowText(hEdit, currentText, 256);
-            if (_tcschr(currentText, '.') == NULL) {
-                _tcscat_s(currentText, 256, _T("."));
-                SetWindowText(hEdit, currentText);
-                g_NewEntry = FALSE;
-            }
+            SendMessage(hEdit, WM_CHAR, '.', 0);
         }
         // --- Clear ---
         else if (id == ID_BTN_CLEAR) {
@@ -148,32 +243,18 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             g_LastOp = 0;
             SetDisplay(0.0);
             g_NewEntry = TRUE;
+            SendMessage(hEdit, EM_SETSEL, 0, -1);
         }
         // --- Operators ---
-        else if (id == ID_BTN_PLUS || id == ID_BTN_MINUS || id == ID_BTN_MUL || id == ID_BTN_DIV) {
-            g_StoredValue = GetDisplay();
-            g_NewEntry = TRUE;
-            if (id == ID_BTN_PLUS) g_LastOp = 1;
-            if (id == ID_BTN_MINUS) g_LastOp = 2;
-            if (id == ID_BTN_MUL) g_LastOp = 3;
-            if (id == ID_BTN_DIV) g_LastOp = 4;
-        }
+        else if (id == ID_BTN_PLUS) HandleOperator(1);
+        else if (id == ID_BTN_MINUS) HandleOperator(2);
+        else if (id == ID_BTN_MUL) HandleOperator(3);
+        else if (id == ID_BTN_DIV) HandleOperator(4);
+        
         // --- Equals ---
         else if (id == ID_BTN_EQUALS) {
-            double current = GetDisplay();
-            double result = g_StoredValue;
-
-            switch (g_LastOp) {
-            case 1: result += current; break;
-            case 2: result -= current; break;
-            case 3: result *= current; break;
-            case 4: if (current != 0) result /= current; else result = 0; break;
-            }
-
-            SetDisplay(result);
-            g_StoredValue = result; // Allow chaining
-            g_NewEntry = TRUE;
-            g_LastOp = 0;
+            DoCalculation();
+            SendMessage(hEdit, EM_SETSEL, 0, -1);
         }
     }
     break;
