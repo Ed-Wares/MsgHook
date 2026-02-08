@@ -1,0 +1,61 @@
+# This starter workflow is for a CMake project running on a single platform. There is a different starter workflow if you need cross-platform coverage.
+# See: https://github.com/actions/starter-workflows/blob/main/ci/cmake-multi-platform.yml
+name: Build
+
+on:
+  # This workflow is designed to be called by other workflows.
+  workflow_call:
+    inputs:
+      git_ref:
+        description: 'The Git reference (e.g., branch or tag) to checkout'
+        required: true
+        type: string
+      version_string:
+        description: 'Version string for the artifact name'
+        required: true
+        type: string
+    outputs:
+      artifact_name:
+        description: 'The name of the generated package file (e.g., test.zip)'
+        value: ${{ jobs.build_package.outputs.package_name }}
+
+jobs:
+  build:
+    # The CMake configure and build commands are platform agnostic and should work equally well on Windows or Mac.
+    # You can convert this to a matrix build if you need cross-platform coverage.
+    # See: https://docs.github.com/en/free-pro-team@latest/actions/learn-github-actions/managing-complex-workflows#using-a-build-matrix
+    runs-on: windows-latest
+    outputs:
+      artifact_id: ${{ steps.upload-artifact.outputs.artifact_id }}
+    defaults:
+      run:
+        shell: msys2 {0} # This sets the default shell for subsequent steps to MSYS2
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ inputs.git_ref }} # Use the reference passed from the calling workflow
+    
+    - uses: msys2/setup-msys2@v2 # Setup MSYS2 environment
+      with:
+        msystem: UCRT64 # Or MINGW64, MINGW32, etc. depending on your target
+        update: true
+        cache: true # Enable the built-in package cache
+        install: git zip mingw-w64-ucrt-x86_64-toolchain base-devel make automake autoconf
+        
+    - name: Run Build Script
+      run: |
+        echo "Running build.bat script"
+        ./build.bat
+
+    - name: Upload build artifact
+      uses: actions/upload-artifact@v4
+      id: upload-artifact
+      with:
+        name: build-binary-${{ inputs.version_string }}
+        path: |
+          ./distrib/*.zip
+          ./distrib/*/*.exe
+        retention-days: 1
+

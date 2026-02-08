@@ -1,0 +1,34 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  # 1. Call the reusable builder
+  build_release_binary:
+    uses: ./.github/workflows/build.yml
+    with:
+      git_ref: ${{ github.ref }} # This checks out the specific tag
+      version_string: ${{ github.event.release.tag_name }} # Use tag (e.g., 1.0.0)
+
+  # 2. Upload the result to the Release page
+  upload_to_release:
+    needs: build_release_binary
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Required to upload files to releases
+
+    steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: build-binary-${{ github.event.release.tag_name }} # Must match the name used in build.yml
+          
+      - name: Upload Asset to Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            *.zip
+            */MsgHook.exe
