@@ -10,6 +10,8 @@
 #pragma comment(lib, "comctl32.lib") // Ensure linker finds it
 #include <iostream>
 #include <string>
+#include <commdlg.h> // for file dialogs
+#include <fstream>
 #include "../dll/MsgHookDll.h"
 #include "resource.h"
 #include "MsgLookup.h"
@@ -24,6 +26,7 @@
 
 // Global Variables:
 #define TXTBOX_LIMIT 700000
+#define MAX_BUFFER_SIZE 65535
 #define MSGHOOKCLI32_EXE L"MsgHookCli32.exe"
 
 HINSTANCE hInst;					 // current instance
@@ -141,6 +144,92 @@ std::wstring GetFilenameFromPid(DWORD pid)
 		// DWORD err = GetLastError();
 	}
 	return filename;
+}
+
+// Helper: Save current log content to a text file
+void SaveLogFile(HWND hWnd, HWND hEdit)
+{
+    OPENFILENAME ofn;       // common dialog box structure
+    wchar_t szFile[260];    // buffer for file name
+    
+    // Initialize OPENFILENAME
+    ZeroMemory(&ofn, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hWnd;
+    ofn.lpstrFile = szFile;
+    ofn.lpstrFile[0] = '\0';
+    ofn.nMaxFile = sizeof(szFile);
+    ofn.lpstrFilter = L"Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0";
+    ofn.nFilterIndex = 1;
+	ofn.lpstrDefExt = L"txt";
+    ofn.lpstrFileTitle =  L"Save Log File";
+    ofn.nMaxFileTitle = 0;
+    ofn.lpstrInitialDir = NULL;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_OVERWRITEPROMPT;
+
+    // Display the Save As dialog box
+    if (GetSaveFileName(&ofn) == TRUE) 
+    {
+        int len = GetWindowTextLength(hEdit); // Get Text Length
+        if (len > 0)
+        {
+            wchar_t* buffer = new wchar_t[len + 1]; // Allocate Buffer
+            GetWindowText(hEdit, buffer, len + 1); // Get Text from Edit Control
+            // Write to File (using standard C++ fstream for simplicity)
+            std::wofstream outfile(ofn.lpstrFile);
+            if (outfile.is_open())
+            {
+                outfile << buffer;
+                outfile.close();
+                MessageBox(hWnd, L"Log saved successfully.", L"Success", MB_OK | MB_ICONINFORMATION);
+            }
+            else
+            {
+                MessageBox(hWnd, L"Failed to write to file.", L"Error", MB_OK | MB_ICONERROR);
+            }
+
+            delete[] buffer;
+        }
+    }
+}
+
+// Helper: Open a text file and load it into the log box
+void OpenLogFile(HWND hWnd, HWND hEdit)
+{
+    OPENFILENAME ofn;       // common dialog box structure
+    wchar_t szFile[260];    // buffer for file name
+    
+    // Initialize OPENFILENAME
+    ZeroMemory(&ofn, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hWnd;
+    ofn.lpstrFile = szFile;
+    ofn.lpstrFile[0] = '\0';
+    ofn.nMaxFile = sizeof(ofn);
+    ofn.lpstrFilter = L"Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0";
+    ofn.nFilterIndex = 1;
+    ofn.lpstrFileTitle =  L"Open Log File";
+    ofn.nMaxFileTitle = 0;
+    ofn.lpstrInitialDir = NULL;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+    // Display the Open dialog box
+    if (GetOpenFileName(&ofn) == TRUE) 
+    {
+        std::wifstream infile(ofn.lpstrFile); // Open the file
+        if (infile.is_open())
+        {
+            // Read content
+            std::wstring content((std::istreambuf_iterator<wchar_t>(infile)),
+                                 (std::istreambuf_iterator<wchar_t>()));
+            infile.close();
+            SetWindowText(hEdit, content.c_str()); // Set Text to Edit Control
+        }
+        else
+        {
+            MessageBox(hWnd, L"Failed to open file.", L"Error", MB_OK | MB_ICONERROR);
+        }
+    }
 }
 
 // --- DRAG AND DROP FINDER LOGIC ---
@@ -802,6 +891,9 @@ void CreateChildControls(HWND hWnd)
         0, 0, 0, 0, hWnd, NULL, NULL, NULL); 
     SendMessage(txtbox, EM_SETLIMITTEXT, (WPARAM)TXTBOX_LIMIT, 0);
     SendMessage(txtbox, WM_SETFONT, (WPARAM)hFont, TRUE);
+
+	SendMessage(hToolbar, TB_ENABLEBUTTON, ID_TB_STOP, FALSE); // Disable Stop button initially
+
 }
 
 //
@@ -912,6 +1004,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			else
 			{
 				StartMessageHook();
+			}
+			break;
+		case ID_TB_SAVE:
+			SaveLogFile(hWnd, txtbox);
+			break;
+		case ID_TB_OPEN:
+			{
+				int len = GetWindowTextLength(txtbox);
+				if (len == 0 || MessageBox(hWnd, L"This will clear the current log. Continue?", L"Confirm", MB_YESNO | MB_ICONWARNING) == IDYES)
+				{
+					OpenLogFile(hWnd, txtbox);
+				}
 			}
 			break;
 		case ID_FILE_STARTHOOK:
