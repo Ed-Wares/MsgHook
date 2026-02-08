@@ -2,11 +2,11 @@
  * MsgHookWin.cpp : Creates a GUI application that can receive messages from the MsgHookDll and display them in a text box
  *
  * Created by ejakubowski7@gmail.com
-*/
+ */
 
 #include <windows.h>
 #include <tchar.h>
-#include <commctrl.h> // for tooltips
+#include <commctrl.h>				 // for tooltips and toolbar
 #pragma comment(lib, "comctl32.lib") // Ensure linker finds it
 #include <iostream>
 #include <string>
@@ -14,25 +14,26 @@
 #include "resource.h"
 #include "MsgLookup.h"
 
-
 // Define Control IDs for the new Toolbar
-#define IDC_BTN_FINDER     2001
-#define IDC_EDIT_HWND_TB   2002
-#define IDC_EDIT_PID_TB    2003
-#define IDC_BTN_START_TB   2004
-#define TOOLBAR_HEIGHT     40
+#define IDC_BTN_FINDER 2001
+#define IDC_EDIT_HWND_TB 2002
+#define IDC_EDIT_PID_TB 2003
+#define IDC_BTN_START_TB 2004
+#define TOOLBAR_HEIGHT 40
 #define MAX_LOADSTRING 100
 
 // Global Variables:
 #define TXTBOX_LIMIT 700000
 #define MSGHOOKCLI32_EXE L"MsgHookCli32.exe"
 
-HINSTANCE hInst;								// current instance
-TCHAR szTitle[MAX_LOADSTRING];					// The title bar text
-TCHAR szWindowClass[MAX_LOADSTRING];			// the main window class name
+HINSTANCE hInst;					 // current instance
+TCHAR szTitle[MAX_LOADSTRING];		 // The title bar text
+TCHAR szWindowClass[MAX_LOADSTRING]; // the main window class name
 HWND mainHwnd = NULL;
 HMENU mainMenu = NULL;
 HWND txtbox = NULL;
+HWND hToolbar = NULL;
+HFONT hFont = NULL;
 
 BOOL isHookStarted = FALSE;
 
@@ -55,14 +56,14 @@ const int txtboxSpacing = 2;
 
 long msgCount = 0;
 
-//message filters flags
+// message filters flags
 bool filterWmCommand = false;
 bool filterWmNotify = false;
 bool filterCustom = false;
 bool filterAbove = false;
 
 #define MAX_TEST_SIZE 100
-//TCHAR targetClassname[MAX_TEST_SIZE] = _T("Notepad");
+// TCHAR targetClassname[MAX_TEST_SIZE] = _T("Notepad");
 TCHAR targetProcessId[MAX_TEST_SIZE] = _T("");
 TCHAR targetClassname[MAX_TEST_SIZE] = _T("");
 TCHAR targetHwndStr[MAX_TEST_SIZE] = _T("");
@@ -74,16 +75,20 @@ TCHAR testWmCommandW[MAX_TEST_SIZE] = _T("1");
 TCHAR customMsgStr[MAX_TEST_SIZE] = _T("WM_SETTEXT");
 
 const int hotkeyIdOffset = 0;
-const int pauseHotKey = 'P'; //P
+const int pauseHotKey = 'P'; // P
 bool isPaused = false;
 
 // Forward declarations of functions included in this code module:
 int APIENTRY StartWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow);
-ATOM				MyRegisterClass(HINSTANCE hInstance);
-BOOL				InitInstance(HINSTANCE, int);
-LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
-INT_PTR CALLBACK	DlgProc(HWND, UINT, WPARAM, LPARAM);
+ATOM MyRegisterClass(HINSTANCE hInstance);
+BOOL InitInstance(HINSTANCE, int);
+LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
+INT_PTR CALLBACK DlgProc(HWND, UINT, WPARAM, LPARAM);
 void StartMessageHook();
+void StopMessageHook();
+void AppendText(HWND txtHwnd, LPCTSTR newText);
+std::wstring GetFilenameFromPid(DWORD pid);
+void CreateChildControls(HWND hWnd);
 
 void AppendText(HWND txtHwnd, LPCTSTR newText)
 {
@@ -91,184 +96,184 @@ void AppendText(HWND txtHwnd, LPCTSTR newText)
 		return;
 	DWORD len = GetWindowTextLength(txtHwnd);
 	if (len > (TXTBOX_LIMIT - 500))
-	{//need to truncate the beginning so the text doesn't go past it's limit
+	{ // need to truncate the beginning so the text doesn't go past it's limit
 		SendMessage(txtHwnd, EM_SETSEL, 0, 20000);
-		SendMessage(txtHwnd, EM_REPLACESEL, 0, (LPARAM)_T(""));
+		SendMessage(txtHwnd, EM_REPLACESEL, 0, (LPARAM) _T(""));
 		len = GetWindowTextLength(txtHwnd);
 	}
-	//DWORD l,r;
-	//SendMessage(txtHwnd, EM_GETSEL,(WPARAM)&l,(LPARAM)&r);
+	// DWORD l,r;
+	// SendMessage(txtHwnd, EM_GETSEL,(WPARAM)&l,(LPARAM)&r);
 	SendMessage(txtHwnd, EM_SETSEL, len, len);
 	SendMessage(txtHwnd, EM_REPLACESEL, 0, (LPARAM)newText);
 	len = GetWindowTextLength(txtHwnd);
 	SendMessage(txtHwnd, EM_SETSEL, len, len);
-	//SendMessage(txtHwnd, EM_SETSEL,l,r);
+	// SendMessage(txtHwnd, EM_SETSEL,l,r);
 }
 
 // Get the full path of the executable from its PID
 std::wstring GetFilenameFromPid(DWORD pid)
 {
-    std::wstring filename = L"";
-    // Use PROCESS_QUERY_LIMITED_INFORMATION (available Vista+)
-    // This allows you to query names of system processes that usually block PROCESS_QUERY_INFORMATION.
-    HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (hProcess)
-    {
-        // Buffer to hold the path
-        TCHAR buffer[MAX_PATH];
-        DWORD size = MAX_PATH;
+	std::wstring filename = L"";
+	// Use PROCESS_QUERY_LIMITED_INFORMATION (available Vista+)
+	// This allows you to query names of system processes that usually block PROCESS_QUERY_INFORMATION.
+	HANDLE hProcess = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+	if (hProcess)
+	{
+		// Buffer to hold the path
+		TCHAR buffer[MAX_PATH];
+		DWORD size = MAX_PATH;
 
-        // Query the full path filename of the process
-        if (QueryFullProcessImageName(hProcess, 0, buffer, &size))
-        {
-            filename = buffer;
-            size_t pos = filename.find_last_of(L"\\/"); // Extract just the filename
-            if (pos != std::wstring::npos) {
-                filename = filename.substr(pos + 1);
-            }
-        }
-        CloseHandle(hProcess);
-    }
-    else
-    {
-        // Optional: Handle error (e.g., Access Denied for protected system PIDs like 0 or 4)
-        // DWORD err = GetLastError();
-    }
-    return filename;
+		// Query the full path filename of the process
+		if (QueryFullProcessImageName(hProcess, 0, buffer, &size))
+		{
+			filename = buffer;
+			size_t pos = filename.find_last_of(L"\\/"); // Extract just the filename
+			if (pos != std::wstring::npos)
+			{
+				filename = filename.substr(pos + 1);
+			}
+		}
+		CloseHandle(hProcess);
+	}
+	else
+	{
+		// Optional: Handle error (e.g., Access Denied for protected system PIDs like 0 or 4)
+		// DWORD err = GetLastError();
+	}
+	return filename;
 }
-
 
 // --- DRAG AND DROP FINDER LOGIC ---
 
 // Helper to update UI fields based on a found window
 void UpdateTargetInfo(HWND foundHwnd)
 {
-    if (foundHwnd)
-    {
-        // Update HWND Box
-        TCHAR tmp[64];
-        _stprintf_s(tmp, _T("0x%llX"), foundHwnd);
-        SetWindowText(hEditHwnd, tmp);
+	if (foundHwnd)
+	{
+		// Update HWND Box
+		TCHAR tmp[64];
+		_stprintf_s(tmp, _T("0x%llX"), foundHwnd);
+		SetWindowText(hEditHwnd, tmp);
 
-        // Update PID Box
-        DWORD pid = 0;
-        GetWindowThreadProcessId(foundHwnd, &pid);
-        _stprintf_s(tmp, _T("%u"), pid);
-        SetWindowText(hEditPid, tmp);
+		// Update PID Box
+		DWORD pid = 0;
+		GetWindowThreadProcessId(foundHwnd, &pid);
+		_stprintf_s(tmp, _T("%u"), pid);
+		SetWindowText(hEditPid, tmp);
 
-        // Temporarily store in global strings (committed on mouse up)
-        _stprintf_s(targetHwndStr, _T("%llu"), (unsigned __int64)foundHwnd);
-        _stprintf_s(targetProcessId, _T("%u"), pid);
-        targetPid = pid;
-        targetHwnd = foundHwnd;
-    }
+		// Temporarily store in global strings (committed on mouse up)
+		_stprintf_s(targetHwndStr, _T("%llu"), (unsigned __int64)foundHwnd);
+		_stprintf_s(targetProcessId, _T("%u"), pid);
+		targetPid = pid;
+		targetHwnd = foundHwnd;
+	}
 }
 
 // Subclassed Window Procedure for the Finder Button
 LRESULT CALLBACK FinderBtnProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-    switch (uMsg)
-    {
-    case WM_LBUTTONDOWN:
-        {
-            isDragging = TRUE;
-            SetCapture(hWnd); // Capture mouse input even outside the window
-            SetCursor(hCursorCross);
-            SetWindowText(hWnd, _T("X")); // Visual cue
-        }
-        return 0;
+	switch (uMsg)
+	{
+	case WM_LBUTTONDOWN:
+	{
+		isDragging = TRUE;
+		SetCapture(hWnd); // Capture mouse input even outside the window
+		SetCursor(hCursorCross);
+		SetWindowText(hWnd, _T("X")); // Visual cue
+	}
+		return 0;
 
-    case WM_MOUSEMOVE:
-        if (isDragging)
-        {
-            // Get global cursor position
-            POINT pt;
-            GetCursorPos(&pt);
-            
-            // Find window under cursor
-            HWND foundHwnd = WindowFromPoint(pt);
-            
-            // Highlight logic could go here (DrawFocusRect), skipped for brevity
-            
-            // Update the Toolbar Text Fields
-            if (foundHwnd != mainHwnd && foundHwnd != hWnd) // Don't pick self
-            {
-                UpdateTargetInfo(foundHwnd);
-            }
-        }
-        break;
+	case WM_MOUSEMOVE:
+		if (isDragging)
+		{
+			// Get global cursor position
+			POINT pt;
+			GetCursorPos(&pt);
 
-    case WM_LBUTTONUP:
-        if (isDragging)
-        {
-            isDragging = FALSE;
-            ReleaseCapture();
-            SetCursor(hCursorNormal);
-            SetWindowText(hWnd, _T("[+]")); // Reset icon text
-            
-            // Get final position
-            POINT pt;
-            GetCursorPos(&pt);
-            HWND foundHwnd = WindowFromPoint(pt);
-            if (foundHwnd != mainHwnd && foundHwnd != hWnd)
-            {
-                 UpdateTargetInfo(foundHwnd);
-                 targetExeName = GetFilenameFromPid(targetPid);
-                 TCHAR info[256];
-                 _stprintf_s(info, _T("Target Locked: %s (PID: %d)\r\n"), targetExeName.c_str(), targetPid);
-                 AppendText(txtbox, info);
-            }
-        }
-        break;
-    }
-    return CallWindowProc(wpOldFinder, hWnd, uMsg, wParam, lParam);
+			// Find window under cursor
+			HWND foundHwnd = WindowFromPoint(pt);
+
+			// Highlight logic could go here (DrawFocusRect), skipped for brevity
+
+			// Update the Toolbar Text Fields
+			if (foundHwnd != mainHwnd && foundHwnd != hWnd) // Don't pick self
+			{
+				UpdateTargetInfo(foundHwnd);
+			}
+		}
+		break;
+
+	case WM_LBUTTONUP:
+		if (isDragging)
+		{
+			isDragging = FALSE;
+			ReleaseCapture();
+			SetCursor(hCursorNormal);
+			SetWindowText(hWnd, _T("[+]")); // Reset icon text
+
+			// Get final position
+			POINT pt;
+			GetCursorPos(&pt);
+			HWND foundHwnd = WindowFromPoint(pt);
+			if (foundHwnd != mainHwnd && foundHwnd != hWnd)
+			{
+				UpdateTargetInfo(foundHwnd);
+				targetExeName = GetFilenameFromPid(targetPid);
+				TCHAR info[256];
+				_stprintf_s(info, _T("Target Locked: %s (PID: %d)\r\n"), targetExeName.c_str(), targetPid);
+				AppendText(txtbox, info);
+			}
+		}
+		break;
+	}
+	return CallWindowProc(wpOldFinder, hWnd, uMsg, wParam, lParam);
 }
 
 // Helper to drill down from the Windows 10/11 "ApplicationFrameHost" wrapper to the actual UWP window (Windows.UI.Core.CoreWindow).
 HWND GetRealUwpWindow(HWND hParent)
 {
-    TCHAR className[256];
-    if (hParent != NULL && GetClassName(hParent, className, 256))
-    {
-        // Check if we grabbed the generic wrapper frame
-        if (_tcscmp(className, _T("ApplicationFrameWindow")) == 0)
-        {
-            // Find the immediate child. UWP apps usually host their content in "Windows.UI.Core.CoreWindow"
-            HWND hChild = FindWindowEx(hParent, NULL, _T("Windows.UI.Core.CoreWindow"), NULL);
-            if (hChild) 
-            {
-                return hChild;
-            }
-        }
-    }
-    return hParent; // Return original if it wasn't a wrapper
+	TCHAR className[256];
+	if (hParent != NULL && GetClassName(hParent, className, 256))
+	{
+		// Check if we grabbed the generic wrapper frame
+		if (_tcscmp(className, _T("ApplicationFrameWindow")) == 0)
+		{
+			// Find the immediate child. UWP apps usually host their content in "Windows.UI.Core.CoreWindow"
+			HWND hChild = FindWindowEx(hParent, NULL, _T("Windows.UI.Core.CoreWindow"), NULL);
+			if (hChild)
+			{
+				return hChild;
+			}
+		}
+	}
+	return hParent; // Return original if it wasn't a wrapper
 }
 
 // Helper to create the tooltip window and register a tool
 void RegisterTooltip(HWND hParent, HWND hControl, LPCTSTR text)
 {
-    // Create the Tooltip Control (if it doesn't exist yet)
-    if (!hToolTip)
-    {
-        hToolTip = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL,
-            WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
-            CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
-            hParent, NULL, hInst, NULL);
+	// Create the Tooltip Control (if it doesn't exist yet)
+	if (!hToolTip)
+	{
+		hToolTip = CreateWindowEx(WS_EX_TOPMOST, TOOLTIPS_CLASS, NULL,
+								  WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP,
+								  CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+								  hParent, NULL, hInst, NULL);
 
-        // Set the max width so it wraps nicely if text is long
-        SendMessage(hToolTip, TTM_SETMAXTIPWIDTH, 0, 300);
-    }
+		// Set the max width so it wraps nicely if text is long
+		SendMessage(hToolTip, TTM_SETMAXTIPWIDTH, 0, 300);
+	}
 
-    // Register the "Tool" (The button) with the Tooltip
-	TOOLINFO ti = { 0 };
-    // Use the V1 size constant to ensure compatibility even if the app doesn't have a Visual Styles manifest.
-    ti.cbSize = TTTOOLINFO_V1_SIZE; 
-    ti.uFlags = TTF_SUBCLASS | TTF_IDISHWND;
-    ti.hwnd = hParent;
-    ti.uId = (UINT_PTR)hControl;
-    ti.hinst = hInst;
-    ti.lpszText = (LPTSTR)text;
-    SendMessage(hToolTip, TTM_ADDTOOL, 0, (LPARAM)&ti);
+	// Register the "Tool" (The button) with the Tooltip
+	TOOLINFO ti = {0};
+	// Use the V1 size constant to ensure compatibility even if the app doesn't have a Visual Styles manifest.
+	ti.cbSize = TTTOOLINFO_V1_SIZE;
+	ti.uFlags = TTF_SUBCLASS | TTF_IDISHWND;
+	ti.hwnd = hParent;
+	ti.uId = (UINT_PTR)hControl;
+	ti.hinst = hInst;
+	ti.lpszText = (LPTSTR)text;
+	SendMessage(hToolTip, TTM_ADDTOOL, 0, (LPARAM)&ti);
 }
 
 // Initialize Message Filters and Lookup Table
@@ -279,10 +284,11 @@ void InitMsgFiltersAndLookup()
 	else
 	{
 		int allowList[4];
-		for (int i = 0; i < 4; i ++)
+		for (int i = 0; i < 4; i++)
 			allowList[i] = -1;
-		
-		if (filterWmCommand) {
+
+		if (filterWmCommand)
+		{
 			AppendText(txtbox, _T("filtering on WM_COMMAND & WM_MENUCOMMAND\r\n"));
 			allowList[0] = WM_COMMAND;
 			allowList[1] = WM_MENUCOMMAND;
@@ -292,14 +298,15 @@ void InitMsgFiltersAndLookup()
 			AppendText(txtbox, _T("filtering on WM_NOTIFY\r\n"));
 			allowList[2] = WM_NOTIFY;
 		}
-		//if (filterAbove)
+		// if (filterAbove)
 		//	allowList[0] = WM_COMMAND;
-		if (filterCustom && _tcslen(customMsgStr) > 0) 
+		if (filterCustom && _tcslen(customMsgStr) > 0)
 		{
-			InitializeMsgLookup(); //initialize full msg list and do reverse lookup based on custom filter string
+			InitializeMsgLookup(); // initialize full msg list and do reverse lookup based on custom filter string
 			for (int x = 0; x < MAX_MSG_LOOKUP; x++)
 			{
-				if (_tcscmp(customMsgStr, MSG_LOOKUP[x]) == 0) {
+				if (_tcscmp(customMsgStr, MSG_LOOKUP[x]) == 0)
+				{
 					TCHAR tmp[100];
 					_stprintf_s(tmp, _T("filtering on %s (%d)\r\n"), customMsgStr, x);
 					AppendText(txtbox, tmp);
@@ -315,13 +322,13 @@ void InitMsgFiltersAndLookup()
 void StartMessageHook()
 {
 	AppendText(txtbox, _T("Starting Message Hook\r\n"));
-	//targetHwnd = FindWindow(targetClassname, NULL);
-	
+	// targetHwnd = FindWindow(targetClassname, NULL);
+
 	TCHAR tmp[500];
-	
+
 	DWORD tid = 0;
 
-	if (_tcscmp(targetHwndStr, _T("")) != 0) //if target HWND was used
+	if (_tcscmp(targetHwndStr, _T("")) != 0) // if target HWND was used
 	{
 		TCHAR *stopStr;
 		targetHwnd = (HWND)_tcstoull(targetHwndStr, &stopStr, 10);
@@ -331,34 +338,36 @@ void StartMessageHook()
 	}
 
 	targetPid = 0;
-	if (_tcscmp(targetProcessId, _T("")) != 0) //if target pid was used
+	if (_tcscmp(targetProcessId, _T("")) != 0) // if target pid was used
 	{
 		TCHAR *stopStr;
 		targetPid = (DWORD)_tcstoull(targetProcessId, &stopStr, 10);
 		targetHwnd = GetHwndFromPID(targetPid);
 		DWORD new_tid = GetWindowThreadProcessId(targetHwnd, NULL);
-		if (new_tid != 0) tid = new_tid;
+		if (new_tid != 0)
+			tid = new_tid;
 		targetExeName = GetFilenameFromPid(targetPid);
-		_stprintf_s(tmp, _T("Application: %s, Target PId: %ld, and Thread Id: %ld\r\n"), targetExeName.c_str(), targetPid, tid);		
+		_stprintf_s(tmp, _T("Application: %s, Target PId: %ld, and Thread Id: %ld\r\n"), targetExeName.c_str(), targetPid, tid);
 	}
 	AppendText(txtbox, tmp);
 	if (targetPid == 0 && targetHwnd != NULL) // if only target hwnd was used, try to fill in the pid and exe name for better info display and filtering
 	{
 		tid = GetWindowThreadProcessId(targetHwnd, &targetPid);
 		targetExeName = GetFilenameFromPid(targetPid);
-		_stprintf_s(tmp, _T("Application: %s, Target PId: %ld, and Thread Id: %ld\r\n"), targetExeName.c_str(), targetPid, tid);		
+		_stprintf_s(tmp, _T("Application: %s, Target PId: %ld, and Thread Id: %ld\r\n"), targetExeName.c_str(), targetPid, tid);
 		return;
 	}
 
 	InitMsgFiltersAndLookup();
-	//InitializeMsgLookup();
-	
-	//block self/global msg hook
-	if (tid == 0) {
+	// InitializeMsgLookup();
+
+	// block self/global msg hook
+	if (tid == 0)
+	{
 		AppendText(txtbox, _T("Target thread not found\r\n"));
 		return;
 	}
-	
+
 	if (targetPid != 0) // handle various types of bit matching
 	{
 		BOOL current64bit = IsCurrentProcess64Bit();
@@ -377,7 +386,7 @@ void StartMessageHook()
 			_stprintf_s(tmp, _T("Launching %s to hook the target process...\r\n"), cmdLine.c_str());
 			AppendText(txtbox, tmp);
 			// Launch the 32-bit helper if target is 32-bit and we're 64-bit (since 64-bit processes can't inject into 32-bit processes)
-			STARTUPINFO si = { sizeof(si) };
+			STARTUPINFO si = {sizeof(si)};
 			PROCESS_INFORMATION pi;
 			if (CreateProcess(NULL, cmdLine.data(), NULL, NULL, FALSE, 0, NULL, NULL, &si, &pi))
 			{
@@ -394,7 +403,7 @@ void StartMessageHook()
 		}
 	}
 	if (SetMsgHookWithFileMap(mainHwnd, tid))
-	//if (InstallMsgHook(mainHwnd, tid))
+	// if (InstallMsgHook(mainHwnd, tid))
 	{
 		isHookStarted = true;
 		SetWindowText(hBtnStartStopHook, _T("Stop Hook"));
@@ -411,63 +420,62 @@ void StopMessageHook()
 	EnableMenuItem(mainMenu, ID_FILE_STOPHOOK, MF_DISABLED | MF_GRAYED);
 	EnableMenuItem(mainMenu, ID_FILE_STARTHOOK, MF_ENABLED);
 	AppendText(txtbox, TEXT("Stopping Message Hook\r\n"));
-	//KillHook();
+	// KillHook();
 	RemoveHookWithFileMap();
-	//UninstallMsgHook();
+	// UninstallMsgHook();
 	isHookStarted = false;
 	SetWindowText(hBtnStartStopHook, _T("Start Hook"));
-    MSG msg;
-    while(PeekMessage(&msg, mainHwnd, WM_COPYDATA, WM_COPYDATA, PM_REMOVE))
-    {
+	MSG msg;
+	while (PeekMessage(&msg, mainHwnd, WM_COPYDATA, WM_COPYDATA, PM_REMOVE))
+	{
 		// Allow the message queue to drain any pending WM_COPYDATA messages
 		//    that were sent *before* we unhooked. This prevents them from accessing dead memory.
-		//TranslateMessage(&msg);
-		//DispatchMessage(&msg);
+		// TranslateMessage(&msg);
+		// DispatchMessage(&msg);
 	}
 	msgCount = 0;
 }
 
-BOOL OnCopyData(COPYDATASTRUCT* pCds) // WM_COPYDATA lParam will have this struct
+BOOL OnCopyData(COPYDATASTRUCT *pCds) // WM_COPYDATA lParam will have this struct
 {
-    if (pCds->dwData == 1) // Match our DLL magic number
-    {
-        // We received a message from the target process!
-        HEVENT hevent = *(HEVENT*)pCds->lpData;
-        // Unpack the Data from COPYDATASTRUCT and HEVENT stuct
-        // The wParam and LParam string data starts immediately after the HEVENT struct
-        BYTE* pRawData = (BYTE*)pCds->lpData + sizeof(HEVENT);
-        wchar_t emptyBuffer[] = L"";
-        const wchar_t* pLParamStr = (wchar_t*)pRawData; // LParam string starts immediately after the HEVENT struct
-        if (hevent.lParamLen == 0)
-            pLParamStr = emptyBuffer;
+	if (pCds->dwData == 1) // Match our DLL magic number
+	{
+		// We received a message from the target process!
+		HEVENT hevent = *(HEVENT *)pCds->lpData;
+		// Unpack the Data from COPYDATASTRUCT and HEVENT stuct
+		// The wParam and LParam string data starts immediately after the HEVENT struct
+		BYTE *pRawData = (BYTE *)pCds->lpData + sizeof(HEVENT);
+		wchar_t emptyBuffer[] = L"";
+		const wchar_t *pLParamStr = (wchar_t *)pRawData; // LParam string starts immediately after the HEVENT struct
+		if (hevent.lParamLen == 0)
+			pLParamStr = emptyBuffer;
 
-        TCHAR msgName[MAX_MSG_NAME];
-        GetMsgNameFromMsgId(hevent.msg, msgName, MAX_MSG_NAME);
+		TCHAR msgName[MAX_MSG_NAME];
+		GetMsgNameFromMsgId(hevent.msg, msgName, MAX_MSG_NAME);
 
-        TCHAR buffer[256];
-        _stprintf_s(buffer, _T("%s[%d]: HWND: %llu | Msg: %d (%s) | wParam: %llu | lParam: %llu (%s)\r\n"), 
-            targetExeName.c_str(), targetPid, hevent.hWnd, hevent.msg, msgName, hevent.wParam, hevent.lParam, pLParamStr);
-        
-        //OutputDebugString(buffer); // View in Visual Studio Output
-        //std::wcout << buffer;      // View in Console
+		TCHAR buffer[256];
+		_stprintf_s(buffer, _T("%s[%d]: HWND: %llu | Msg: %d (%s) | wParam: %llu | lParam: %llu (%s)\r\n"),
+					targetExeName.c_str(), targetPid, hevent.hWnd, hevent.msg, msgName, hevent.wParam, hevent.lParam, pLParamStr);
+
+		// OutputDebugString(buffer); // View in Visual Studio Output
+		// std::wcout << buffer;      // View in Console
 		AppendText(txtbox, buffer); // View in Text Box
-        return TRUE;
-    }
-    return FALSE;
+		return TRUE;
+	}
+	return FALSE;
 }
 
-void SendWmSettext() //ID_TESTMSGS_WM
+void SendWmSettext() // ID_TESTMSGS_WM
 {
-	//SetWindowText(targetHwnd, _T("This is a test"));
-	//TCHAR txt[] = _T("This is a test");
+	// SetWindowText(targetHwnd, _T("This is a test"));
+	// TCHAR txt[] = _T("This is a test");
 	TCHAR *stopStr;
 	long wparam = _tcstoull(testWmSettextW, &stopStr, 10);
 	SendMessage(targetHwnd, WM_SETTEXT, wparam, (LPARAM)testWmSettextL);
-	//PostMessage(targetHwnd, WM_SETTEXT, 0 , (LPARAM)txt);
+	// PostMessage(targetHwnd, WM_SETTEXT, 0 , (LPARAM)txt);
 }
 
-
-void SendWmCommand() //ID_TESTMSGS_WM
+void SendWmCommand() // ID_TESTMSGS_WM
 {
 	TCHAR *stopStr;
 	HWND sendHwnd = targetHwnd;
@@ -487,10 +495,10 @@ void SendWmCommand() //ID_TESTMSGS_WM
 
 void HotKeyPressed(WPARAM wParam)
 {
-	//AppendText(txtbox, _T("hotkey test"));
+	// AppendText(txtbox, _T("hotkey test"));
 	if (wParam == (pauseHotKey + hotkeyIdOffset))
 	{
-		if (!isPaused) 
+		if (!isPaused)
 		{
 			AppendText(txtbox, _T("Paused\r\n"));
 			isPaused = true;
@@ -503,12 +511,11 @@ void HotKeyPressed(WPARAM wParam)
 	}
 }
 
-//extern "C" __declspec(dllexport) 
+// extern "C" __declspec(dllexport)
 void CreateMsgHookWindowx(LPTSTR lpCmdLine)
 {
-	//StartWinMain(GetModuleHandle(NULL), NULL, lpCmdLine, SW_SHOW);
-	//StartWinMain((HINSTANCE)pData->g_hInstance, NULL, lpCmdLine, SW_SHOW);
-	
+	// StartWinMain(GetModuleHandle(NULL), NULL, lpCmdLine, SW_SHOW);
+	// StartWinMain((HINSTANCE)pData->g_hInstance, NULL, lpCmdLine, SW_SHOW);
 }
 
 // The main entry point for the Windows application.
@@ -520,13 +527,17 @@ int APIENTRY wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmd
 int APIENTRY StartWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR lpCmdLine, int nCmdShow)
 {
 
-	//Initialize common controls for tooltips
+	// Initialize common controls for tooltips
 	INITCOMMONCONTROLSEX icex;
-    icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
-    icex.dwICC = ICC_WIN95_CLASSES; // Includes Tooltips, TreeViews, ListViews, etc.
-    InitCommonControlsEx(&icex);
+	icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
+	icex.dwICC = ICC_BAR_CLASSES; // Includes Tooltips, TreeViews, ListViews, etc.
+	if (!InitCommonControlsEx(&icex))
+	{
+		MessageBox(NULL, L"Failed to load Common Controls!", L"Error", MB_OK);
+		return FALSE;
+	}
 
- 	// TODO: Place code here.
+	// TODO: Place code here.
 	MSG msg;
 	HACCEL hAccelTable;
 
@@ -536,7 +547,7 @@ int APIENTRY StartWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR l
 	MyRegisterClass(hInstance);
 
 	// Extract the DLL resource if it doesn't already exist
-	//ExtractResourceRc("MSGHOOK_FILE", "DLL", MSGHOOK_DLL);
+	// ExtractResourceRc("MSGHOOK_FILE", "DLL", MSGHOOK_DLL);
 	HMODULE hMod = LoadLibrary(GetDllFilenameBitWise());
 	BOOL dllStatus = LoadDllFunctions(hMod);
 	if (!dllStatus)
@@ -545,15 +556,14 @@ int APIENTRY StartWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR l
 		return FALSE;
 	}
 
-	// Perform application initialization:
-	if (!InitInstance (hInstance, nCmdShow))
+	if (!InitInstance(hInstance, nCmdShow)) // CreateWindow and other init logic
 	{
 		return FALSE;
 	}
 
 	hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_MSGHOOKTEST));
 
-	if (lpCmdLine != NULL) //process command line args
+	if (lpCmdLine != NULL) // process command line args
 	{
 		if (_tcslen(lpCmdLine) > 0)
 		{
@@ -567,7 +577,7 @@ int APIENTRY StartWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR l
 	// Main message loop:
 	while (GetMessage(&msg, NULL, 0, 0))
 	{
-		//if (msg.message == WM_HOTKEY)
+		// if (msg.message == WM_HOTKEY)
 		//	HotKeyPressed(msg.wParam);
 		if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
 		{
@@ -577,7 +587,7 @@ int APIENTRY StartWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR l
 	}
 	UnregisterHotKey(mainHwnd, pauseHotKey + hotkeyIdOffset);
 
-	return (int) msg.wParam;
+	return (int)msg.wParam;
 }
 
 //
@@ -599,17 +609,17 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 
 	wcex.cbSize = sizeof(WNDCLASSEX);
 
-	wcex.style			= CS_HREDRAW | CS_VREDRAW;
-	wcex.lpfnWndProc	= WndProc;
-	wcex.cbClsExtra		= 0;
-	wcex.cbWndExtra		= 0;
-	wcex.hInstance		= hInstance;
-	wcex.hIcon			= LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MSGHOOKICO));
-	wcex.hCursor		= LoadCursor(NULL, IDC_ARROW);
-	wcex.hbrBackground	= (HBRUSH)(COLOR_BTNFACE+1); // Use button face color for background
-	wcex.lpszMenuName	= MAKEINTRESOURCE(IDC_MSGHOOKTEST);
-	wcex.lpszClassName	= szWindowClass;
-	wcex.hIconSm		= LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+	wcex.style = CS_HREDRAW | CS_VREDRAW;
+	wcex.lpfnWndProc = WndProc;
+	wcex.cbClsExtra = 0;
+	wcex.cbWndExtra = 0;
+	wcex.hInstance = hInstance;
+	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MSGHOOKICO));
+	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
+	wcex.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1); // Use button face color for background
+	wcex.lpszMenuName = MAKEINTRESOURCE(IDC_MSGHOOKTEST);
+	wcex.lpszClassName = szWindowClass;
+	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
 
 	return RegisterClassEx(&wcex);
 }
@@ -626,94 +636,170 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 //
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
-   HWND hWnd;
+	HWND hWnd;
 
-   hInst = hInstance; // Store instance handle in our global variable
+	hInst = hInstance; // Store instance handle in our global variable
 
-   hWnd = CreateWindow(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-      CW_USEDEFAULT, 0, 750, 400, NULL, NULL, hInstance, NULL);
+	hWnd = CreateWindow(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
+						CW_USEDEFAULT, 0, 750, 400, NULL, NULL, hInstance, NULL);
 
-   if (!hWnd) {
-	    DWORD lastErr = GetLastError();
+	if (!hWnd)
+	{
+		DWORD lastErr = GetLastError();
 		printf("Error Creating Window %d\n", lastErr);
 		_tprintf(_T("Window Class Name: %s, Instance: %p\n"), szWindowClass, hInstance);
 		return FALSE;
-   }
-   mainHwnd = hWnd;
+	}
+	mainHwnd = hWnd;
 
-   mainMenu = GetMenu(mainHwnd);
+	mainMenu = GetMenu(mainHwnd);
 
-   // Create standard cursors for Drag operation
-   hCursorNormal = LoadCursor(NULL, IDC_ARROW);
-   hCursorCross  = LoadCursor(NULL, IDC_CROSS);
+	// Create standard cursors for Drag operation
+	hCursorNormal = LoadCursor(NULL, IDC_ARROW);
+	hCursorCross = LoadCursor(NULL, IDC_CROSS);
 
-   EnableMenuItem(mainMenu, ID_FILE_STOPHOOK, MF_DISABLED | MF_GRAYED);
+	EnableMenuItem(mainMenu, ID_FILE_STOPHOOK, MF_DISABLED | MF_GRAYED);
 
-   RegisterHotKey(mainHwnd, pauseHotKey + hotkeyIdOffset, MOD_NOREPEAT | MOD_SHIFT | MOD_CONTROL, pauseHotKey); // CTRL + SHIFT + P
+	RegisterHotKey(mainHwnd, pauseHotKey + hotkeyIdOffset, MOD_NOREPEAT | MOD_SHIFT | MOD_CONTROL, pauseHotKey); // CTRL + SHIFT + P
 
-   ShowWindow(hWnd, nCmdShow);
-   UpdateWindow(hWnd);
+	ChangeWindowMessageFilter(WM_COPYDATA, MSGFLT_ADD); // Allow applications to send WM_COPYDATA to us
 
-   //set always on top
-   SetWindowPos(mainHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE| SWP_NOMOVE);
+	hFont = CreateFont(14, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, ANSI_CHARSET,
+							 OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, TEXT("Arial"));
 
-   return TRUE;
+	ShowWindow(hWnd, nCmdShow);
+	UpdateWindow(hWnd);
+
+	// set always on top
+	SetWindowPos(mainHwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE);
+
+	return TRUE;
 }
 
-void CreateChildWins(HWND hWnd)
+/*
+IDI_TARGET              ICON                    "resources/image-filter-center-focus.ico"
+IDI_PLAY                ICON                    "resources/play-outline.ico"
+IDI_STOP                ICON                    "resources/stop.ico"
+IDI_SAVE                ICON                    "resources/content-save-all-outline.ico"
+IDI_OPEN                ICON                    "resources/forum-plus-outline.ico"
+IDI_CLEAR               ICON                    "resources/eraser.ico"
+*/
+// Create Child Controls (Toolbar with buttons and text boxes)
+void CreateChildControls(HWND hWnd)
 {
-    // Allow applications to send WM_COPYDATA to us
-    ChangeWindowMessageFilter(WM_COPYDATA, MSGFLT_ADD); 
+    // --- CONFIGURATION ---
+    const int iconSize = 32;      
+    const int btnPadding = 7;     
+    const int btnSize = iconSize + btnPadding;
+	const int btnTotal = 9; // 6 buttons + 3 spacers
+    // ---------------------
 
-    HFONT hFont = CreateFont(14, 0, 0, 0, FW_DONTCARE, FALSE, FALSE, FALSE, ANSI_CHARSET, 
-        OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH | FF_DONTCARE, TEXT("Arial"));
+    // Initialize & Create Toolbar
+    INITCOMMONCONTROLSEX icex;
+    icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
+    icex.dwICC = ICC_BAR_CLASSES; 
+    InitCommonControlsEx(&icex);
 
-    // --- TOOLBAR UI ---
-    int x = 5; int y = 5; int spacing = 10;
+    hToolbar = CreateWindowEx(0, TOOLBARCLASSNAME, NULL,
+        WS_CHILD | WS_VISIBLE | TBSTYLE_CUSTOMERASE | TBSTYLE_TOOLTIPS | CCS_NODIVIDER, 
+        0, 0, 0, 0, hWnd, NULL, hInst, NULL);
 
-    // Finder Button (Target Icon)
-    hBtnFinder = CreateWindow(_T("BUTTON"), _T("[+]"), 
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_CENTER,
-        x, y, 30, 30, hWnd, (HMENU)IDC_BTN_FINDER, hInst, NULL);
-	//Create tooltip for finder button
-	RegisterTooltip(hWnd, hBtnFinder, _T("Drag this Icon over a target window to select it."));
+    SendMessage(hToolbar, TB_BUTTONSTRUCTSIZE, (WPARAM)sizeof(TBBUTTON), 0);
+    SendMessage(hToolbar, TB_SETBITMAPSIZE, 0, MAKELPARAM(iconSize, iconSize));
+    SendMessage(hToolbar, TB_SETBUTTONSIZE, 0, MAKELPARAM(btnSize, btnSize));
+
+    // 2. Load Icons
+    HIMAGELIST hImageList = ImageList_Create(iconSize, iconSize, ILC_COLOR32 | ILC_MASK, 5, 0);
+    #define LOAD_ICON(id) (HICON)LoadImage(hInst, MAKEINTRESOURCE(id), IMAGE_ICON, iconSize, iconSize, LR_DEFAULTCOLOR)
     
-    // Subclass the button to handle dragging
+    HICON hIcon;
+    hIcon = LOAD_ICON(IDI_TARGET); ImageList_AddIcon(hImageList, hIcon); DestroyIcon(hIcon);
+    hIcon = LOAD_ICON(IDI_PLAY);   ImageList_AddIcon(hImageList, hIcon); DestroyIcon(hIcon);
+    hIcon = LOAD_ICON(IDI_STOP);   ImageList_AddIcon(hImageList, hIcon); DestroyIcon(hIcon);
+    hIcon = LOAD_ICON(IDI_SAVE);   ImageList_AddIcon(hImageList, hIcon); DestroyIcon(hIcon);
+    hIcon = LOAD_ICON(IDI_OPEN);   ImageList_AddIcon(hImageList, hIcon); DestroyIcon(hIcon);
+    hIcon = LOAD_ICON(IDI_CLEAR);  ImageList_AddIcon(hImageList, hIcon); DestroyIcon(hIcon);
+
+    SendMessage(hToolbar, TB_SETIMAGELIST, 0, (LPARAM)hImageList);
+
+    // use BTNS_SEP for spacers. iBitmap is interpreted as WIDTH in pixels.
+    TBBUTTON tbButtons[btnTotal] = { 0 };
+
+    tbButtons[0].iBitmap = 45;       // <--- DIRECT WIDTH SETTING
+    tbButtons[0].idCommand = ID_TB_SPACER_FINDER;
+    tbButtons[0].fsState = TBSTATE_ENABLED; 
+    tbButtons[0].fsStyle = BTNS_SEP; // <--- BACK TO SEPARATOR
+
+    tbButtons[1].iBitmap = 175;      // <--- DIRECT WIDTH SETTING
+    tbButtons[1].idCommand = ID_TB_SPACER_HWND;
+    tbButtons[1].fsState = TBSTATE_ENABLED; 
+    tbButtons[1].fsStyle = BTNS_SEP; // <--- BACK TO SEPARATOR
+
+    tbButtons[2].iBitmap = 130;      // <--- DIRECT WIDTH SETTING
+    tbButtons[2].idCommand = ID_TB_SPACER_PID;
+    tbButtons[2].fsState = TBSTATE_ENABLED; 
+    tbButtons[2].fsStyle = BTNS_SEP; // <--- BACK TO SEPARATOR
+
+    // Standard Buttons
+    tbButtons[3].iBitmap = 1; tbButtons[3].idCommand = ID_TB_PLAY; 
+	tbButtons[3].fsState = TBSTATE_ENABLED; tbButtons[3].fsStyle = BTNS_BUTTON;
+    
+	tbButtons[4].iBitmap = 2; tbButtons[4].idCommand = ID_TB_STOP;
+	tbButtons[4].fsState = TBSTATE_ENABLED; tbButtons[4].fsStyle = BTNS_BUTTON;
+    
+    tbButtons[5].iBitmap = 10; tbButtons[5].fsStyle = BTNS_SEP; // Regular small spacer
+    
+    tbButtons[6].iBitmap = 3; tbButtons[6].idCommand = ID_TB_SAVE; 
+	tbButtons[6].fsState = TBSTATE_ENABLED; tbButtons[6].fsStyle = BTNS_BUTTON;
+    
+	tbButtons[7].iBitmap = 4; tbButtons[7].idCommand = ID_TB_OPEN; 
+	tbButtons[7].fsState = TBSTATE_ENABLED; tbButtons[7].fsStyle = BTNS_BUTTON;
+    
+	tbButtons[8].iBitmap = 5; tbButtons[8].idCommand = ID_TB_CLEAR; 
+	tbButtons[8].fsState = TBSTATE_ENABLED; tbButtons[8].fsStyle = BTNS_BUTTON;
+
+    SendMessage(hToolbar, TB_ADDBUTTONS, btnTotal, (LPARAM)&tbButtons);
+
+    // Position Child Controls
+    // Now we rely on the separator widths we just set.
+    
+    RECT rcItem;
+    int yOffsetEdit = (btnSize - 20) / 2; // Approximate center
+    int yOffsetBtn  = (btnSize - iconSize) / 2;
+
+    // --- A. Finder (Index 0) ---
+    SendMessage(hToolbar, TB_GETITEMRECT, 0, (LPARAM)&rcItem);
+    hBtnFinder = CreateWindow(_T("BUTTON"), _T(""), 
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON | BS_CENTER | BS_ICON,
+        rcItem.left, rcItem.top + yOffsetBtn, iconSize, iconSize, hToolbar, (HMENU)IDC_BTN_FINDER, hInst, NULL);
+    
+    HICON hFinderIcon = LOAD_ICON(IDI_TARGET);
+    SendMessage(hBtnFinder, BM_SETIMAGE, IMAGE_ICON, (LPARAM)hFinderIcon);
     wpOldFinder = (WNDPROC)SetWindowLongPtr(hBtnFinder, GWLP_WNDPROC, (LONG_PTR)FinderBtnProc);
-    x += 30 + spacing;
+	RegisterTooltip(hToolbar, hBtnFinder, _T("Drag this Icon over a target window to select it."));
 
-    // HWND Label & Edit
-    CreateWindow(_T("STATIC"), _T("HWND:"), WS_CHILD | WS_VISIBLE, x, y+6, 55, 20, hWnd, NULL, hInst, NULL);
-    x += 55;
+    // --- B. HWND (Index 1) ---
+    SendMessage(hToolbar, TB_GETITEMRECT, 1, (LPARAM)&rcItem);
+    int x = rcItem.left;
+    CreateWindow(_T("STATIC"), _T("HWND:"), WS_CHILD | WS_VISIBLE, x, rcItem.top + yOffsetEdit + 2, 50, 20, hToolbar, NULL, hInst, NULL);
     hEditHwnd = CreateWindow(_T("EDIT"), _T(""), WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | ES_READONLY, 
-        x, y+5, 90, 20, hWnd, (HMENU)IDC_EDIT_HWND_TB, hInst, NULL);
-	//Create tooltip for HWND edit box
-	RegisterTooltip(hWnd, hEditHwnd, _T("Displays the handle of the selected target window."));
+        x + 60, rcItem.top + yOffsetEdit, 100, 20, hToolbar, (HMENU)IDC_EDIT_HWND_TB, hInst, NULL);
     SendMessage(hEditHwnd, WM_SETFONT, (WPARAM)hFont, TRUE);
-    x += 90 + spacing;
+	RegisterTooltip(hToolbar, hEditHwnd, _T("HWND of the selected target window."));
 
-    // PID Label & Edit
-    CreateWindow(_T("STATIC"), _T("PID:"), WS_CHILD | WS_VISIBLE, x, y+6, 35, 20, hWnd, NULL, hInst, NULL);
-    x += 35;
+    // --- C. PID (Index 2) ---
+    SendMessage(hToolbar, TB_GETITEMRECT, 2, (LPARAM)&rcItem);
+    x = rcItem.left;
+    CreateWindow(_T("STATIC"), _T("PID:"), WS_CHILD | WS_VISIBLE, x, rcItem.top + yOffsetEdit + 2, 30, 20, hToolbar, NULL, hInst, NULL);
     hEditPid = CreateWindow(_T("EDIT"), _T(""), WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL | ES_READONLY, 
-        x, y+5, 70, 20, hWnd, (HMENU)IDC_EDIT_PID_TB, hInst, NULL);
-	//Create tooltip for PID edit box
-	RegisterTooltip(hWnd, hEditPid, _T("Displays the process ID of the selected target window."));
+        x + 35, rcItem.top + yOffsetEdit, 80, 20, hToolbar, (HMENU)IDC_EDIT_PID_TB, hInst, NULL);
     SendMessage(hEditPid, WM_SETFONT, (WPARAM)hFont, TRUE);
-    x += 70 + spacing;
+	RegisterTooltip(hToolbar, hEditPid, _T("PID of the selected target window."));
 
-    // Start and stop Hook Button
-    hBtnStartStopHook = CreateWindow(_T("BUTTON"), _T("Start Hook"), 
-        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        x, y, 100, 30, hWnd, (HMENU)IDC_BTN_START_TB, hInst, NULL);
-	//Create tooltip for start/stop button
-	RegisterTooltip(hWnd, hBtnStartStopHook, _T("Start or Stop the Message Hooking into the target process."));
-    
-    // MAIN LOG TxtBOX
+    // --- D. Log Box ---
     txtbox = CreateWindow(TEXT("Edit"),TEXT(""), 
         WS_CHILD | WS_VISIBLE | ES_MULTILINE | WS_VSCROLL | ES_AUTOVSCROLL | ES_READONLY, 
-        0, 0, 0, 0, hWnd, NULL, NULL, NULL); // Sized in WM_SIZE
-    
+        0, 0, 0, 0, hWnd, NULL, NULL, NULL); 
     SendMessage(txtbox, EM_SETLIMITTEXT, (WPARAM)TXTBOX_LIMIT, 0);
     SendMessage(txtbox, WM_SETFONT, (WPARAM)hFont, TRUE);
 }
@@ -736,35 +822,94 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 	switch (message)
 	{
-    case WM_CTLCOLORSTATIC:
-        {
-            HDC hdc = (HDC)wParam;
-            HWND hCtrl = (HWND)lParam;
-            if (hCtrl == txtbox) // Check if the control asking for color is our Log txtbox
-            {
-                SetBkColor(hdc, RGB(255, 255, 255)); // Text Background = White
-                SetTextColor(hdc, RGB(0, 0, 0));     // Text Color = Black
-                return (INT_PTR)GetStockObject(WHITE_BRUSH); // Box Background = White
-            }
-        }        
-        break;
-    case WM_CREATE:
-        CreateChildWins(hWnd);
+	case WM_CTLCOLORSTATIC:
+	{
+		HDC hdc = (HDC)wParam;
+		HWND hCtrl = (HWND)lParam;
+		if (hCtrl == txtbox) // Check if the control asking for color is our Log txtbox
+		{
+			SetBkColor(hdc, RGB(255, 255, 255));		 // Text Background = White
+			SetTextColor(hdc, RGB(0, 0, 0));			 // Text Color = Black
+			return (INT_PTR)GetStockObject(WHITE_BRUSH); // Box Background = White
+		}
+	}
+	break;
+	case WM_CREATE:
+		CreateChildControls(hWnd);
 		break;
 	case WM_COPYDATA:
-		return (OnCopyData((COPYDATASTRUCT *) lParam));
+		return (OnCopyData((COPYDATASTRUCT *)lParam));
+	case WM_NOTIFY:
+	{
+		LPNMHDR pnmh = (LPNMHDR)lParam;
+		if (pnmh->code == TTN_GETDISPINFO) // check if the message is a tooltip requesting text
+		{
+			LPNMTTDISPINFO lpnmtdi = (LPNMTTDISPINFO)lParam;
+			switch (pnmh->idFrom)
+			{
+			case ID_TB_PLAY:
+				wcscpy_s(lpnmtdi->szText, ARRAYSIZE(lpnmtdi->szText), L"Start Hook");
+				break;
+			case ID_TB_STOP:
+				wcscpy_s(lpnmtdi->szText, ARRAYSIZE(lpnmtdi->szText), L"Stop Hook");
+				break;
+			case ID_TB_SAVE:
+				wcscpy_s(lpnmtdi->szText, ARRAYSIZE(lpnmtdi->szText), L"Save Log");
+				break;
+			case ID_TB_OPEN:
+				wcscpy_s(lpnmtdi->szText, ARRAYSIZE(lpnmtdi->szText), L"Open Log");
+				break;
+			case ID_TB_CLEAR:
+				wcscpy_s(lpnmtdi->szText, ARRAYSIZE(lpnmtdi->szText), L"Clear Log");
+				break;
+			}
+			return 0; // Return 0 to indicate we handled it
+		}
+		// Check if the message is Custom Draw from our Toolbar
+		if (pnmh->code == NM_CUSTOMDRAW) // && pnmh->hwndFrom == hToolbar
+		{
+			LPNMTBCUSTOMDRAW lpNMCustomDraw = (LPNMTBCUSTOMDRAW)lParam;
+			// Pre-Paint (Before the toolbar draws itself)
+			// We must return CDRF_NOTIFYITEMDRAW to get notifications for each button
+			if (lpNMCustomDraw->nmcd.dwDrawStage == CDDS_PREPAINT) return CDRF_NOTIFYITEMDRAW;
+
+			// Item Pre-Paint (Before an individual button/separator is drawn)
+			if (lpNMCustomDraw->nmcd.dwDrawStage == CDDS_ITEMPREPAINT)
+			{
+				int id = (int)lpNMCustomDraw->nmcd.dwItemSpec;// Check the ID of the item being drawn
+				// If it's one of our Ghost Buttons, DO NOT DRAW IT.
+				if (id == ID_TB_SPACER_HWND || id == ID_TB_SPACER_PID || id == ID_TB_SPACER_FINDER)
+				{
+					return CDRF_SKIPDEFAULT; // Doesn't draw the vertical line
+				}
+				return CDRF_DODEFAULT; // For all other buttons/separators, draw normally
+			}
+		}
+	}
+	break;
 	case WM_COMMAND:
-		wmId    = LOWORD(wParam);
+		wmId = LOWORD(wParam);
 		wmEvent = HIWORD(wParam);
 		// Parse the menu selections:
 		switch (wmId)
 		{
-        case IDC_BTN_START_TB: // Toolbar Start Button
-			if (isHookStarted) 
+		case ID_TB_PLAY:
+			StartMessageHook();
+			// Toggle Button States
+			SendMessage(hToolbar, TB_ENABLEBUTTON, ID_TB_PLAY, FALSE);
+			SendMessage(hToolbar, TB_ENABLEBUTTON, ID_TB_STOP, TRUE);
+			break;
+		case ID_TB_STOP:
+			StopMessageHook();
+			SendMessage(hToolbar, TB_ENABLEBUTTON, ID_TB_PLAY, TRUE);
+			SendMessage(hToolbar, TB_ENABLEBUTTON, ID_TB_STOP, FALSE);
+			break;
+		case IDC_BTN_START_TB: // Toolbar Start Button
+			if (isHookStarted)
 			{
 				StopMessageHook();
 			}
-			else 
+			else
 			{
 				StartMessageHook();
 			}
@@ -782,7 +927,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			SendWmCommand();
 			break;
 		case ID_PROC64TEST:
-			if (_tcscmp(targetProcessId, _T("")) != 0) //if target pid was used
+			if (_tcscmp(targetProcessId, _T("")) != 0) // if target pid was used
 			{
 				TCHAR tmp[500];
 				TCHAR *stopStr;
@@ -790,18 +935,18 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 				BOOL current64bit = IsCurrentProcess64Bit();
 				if (IsProcess64Bit(targetPid) && current64bit)
 					_stprintf_s(tmp, _T("Target pid (%ld) is a matching 64 bit process\r\n"), targetPid);
-				else if(!IsProcess64Bit(targetPid) && !current64bit)
+				else if (!IsProcess64Bit(targetPid) && !current64bit)
 					_stprintf_s(tmp, _T("Target pid (%ld) is a matching 32 bit process\r\n"), targetPid);
 				else if (IsProcess64Bit(targetPid))
 					_stprintf_s(tmp, _T("Target pid (%ld) is 64 bit process\r\n"), targetPid);
 				else
 					_stprintf_s(tmp, _T("Target pid (%ld) is 32 bit process\r\n"), targetPid);
 				AppendText(txtbox, tmp);
-				//ExtractResource(IDR_SETMH32, _T("SetMsgHook32.exe"));
+				// ExtractResource(IDR_SETMH32, _T("SetMsgHook32.exe"));
 				//_stprintf_s(tmp, _T(" %s %ld %d"), dll32bitName, (long)mainHwnd, targetPid);
-				//RunResource(IDR_SETMH32, tmp);
+				// RunResource(IDR_SETMH32, tmp);
 
-				//MessageBox(0, , _T("64 bit Test"), 0);
+				// MessageBox(0, , _T("64 bit Test"), 0);
 			}
 			break;
 		case ID_FILE_SETTINGS:
@@ -810,6 +955,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case IDM_ABOUT:
 			DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, DlgProc);
 			break;
+		case ID_TB_CLEAR:			
 		case ID_FILE_CLEAR:
 			SetWindowText(txtbox, _T(""));
 			break;
@@ -829,17 +975,23 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		EndPaint(hWnd, &ps);
 		break;
 	case WM_SIZE:
-        { 
-            // Resize logic: Keep Toolbar fixed at top, stretch Edit Box below it
-            int nWidth = LOWORD(lParam);
-            int nHeight = HIWORD(lParam);
-            // Log Box starts below Toolbar Height
-            int logY = TOOLBAR_HEIGHT + txtboxSpacing;
-            int logH = nHeight - logY - txtboxSpacing;
-            if (logH < 0) logH = 0;
-            SetWindowPos(txtbox, HWND_NOTOPMOST, txtboxSpacing, logY, nWidth-(txtboxSpacing*2), logH, SWP_NOZORDER);
-        }
-		break;
+	{
+		SendMessage(hToolbar, TB_AUTOSIZE, 0, 0); // Auto-size the toolbar
+		// Get Toolbar Height
+		RECT rcTb;
+		GetWindowRect(hToolbar, &rcTb);
+		int tbHeight = rcTb.bottom - rcTb.top;
+
+		// Resize Log Box to fill the rest of the window
+		int nWidth = LOWORD(lParam);
+		int nHeight = HIWORD(lParam);
+
+		SetWindowPos(txtbox, NULL,
+					 0, tbHeight,				 // Start below toolbar
+					 nWidth, nHeight - tbHeight, // Fill remaining height
+					 SWP_NOZORDER);
+	}
+	break;
 	case WM_DESTROY:
 		PostQuitMessage(0);
 		break;
@@ -856,31 +1008,31 @@ INT_PTR CALLBACK DlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 	switch (message)
 	{
 	case WM_INITDIALOG:
-		{
-			//IDC_EDIT1
-			//SendDlgItemMessage(hDlg, IDC_EDIT1, WM_SETTEXT, 0 , (LPARAM)targetClassname);
-			SendDlgItemMessage(hDlg, IDC_TARGETPID, WM_SETTEXT, 0 , (LPARAM)targetProcessId);
-			if (filterWmCommand)
-				SendDlgItemMessage(hDlg, IDC_CHECK_CMD, BM_SETCHECK, BST_CHECKED, 0);
-			if (filterWmNotify)
-				SendDlgItemMessage(hDlg, IDC_CHECK_NOT, BM_SETCHECK, BST_CHECKED, 0);
-			if (filterAbove)
-				SendDlgItemMessage(hDlg, IDC_CHECK_ABO, BM_SETCHECK, BST_CHECKED, 0);
-			if (filterCustom)
-				SendDlgItemMessage(hDlg, IDC_CUSTOMCHK, BM_SETCHECK, BST_CHECKED, 0);
-			SendDlgItemMessage(hDlg, IDC_WMCOMW, WM_SETTEXT, 0 , (LPARAM)testWmCommandW);
-			SendDlgItemMessage(hDlg, IDC_WMCOML, WM_SETTEXT, 0 , (LPARAM)testWmCommandL);
-			SendDlgItemMessage(hDlg, IDC_WMSETW, WM_SETTEXT, 0 , (LPARAM)testWmSettextW);
-			SendDlgItemMessage(hDlg, IDC_WMSETL, WM_SETTEXT, 0 , (LPARAM)testWmSettextL);
-			SendDlgItemMessage(hDlg, IDC_HWND, WM_SETTEXT, 0 , (LPARAM)targetHwndStr);
-			SendDlgItemMessage(hDlg, IDC_CUSTOMMSG, WM_SETTEXT, 0 , (LPARAM)customMsgStr);			
-		}
+	{
+		// IDC_EDIT1
+		// SendDlgItemMessage(hDlg, IDC_EDIT1, WM_SETTEXT, 0 , (LPARAM)targetClassname);
+		SendDlgItemMessage(hDlg, IDC_TARGETPID, WM_SETTEXT, 0, (LPARAM)targetProcessId);
+		if (filterWmCommand)
+			SendDlgItemMessage(hDlg, IDC_CHECK_CMD, BM_SETCHECK, BST_CHECKED, 0);
+		if (filterWmNotify)
+			SendDlgItemMessage(hDlg, IDC_CHECK_NOT, BM_SETCHECK, BST_CHECKED, 0);
+		if (filterAbove)
+			SendDlgItemMessage(hDlg, IDC_CHECK_ABO, BM_SETCHECK, BST_CHECKED, 0);
+		if (filterCustom)
+			SendDlgItemMessage(hDlg, IDC_CUSTOMCHK, BM_SETCHECK, BST_CHECKED, 0);
+		SendDlgItemMessage(hDlg, IDC_WMCOMW, WM_SETTEXT, 0, (LPARAM)testWmCommandW);
+		SendDlgItemMessage(hDlg, IDC_WMCOML, WM_SETTEXT, 0, (LPARAM)testWmCommandL);
+		SendDlgItemMessage(hDlg, IDC_WMSETW, WM_SETTEXT, 0, (LPARAM)testWmSettextW);
+		SendDlgItemMessage(hDlg, IDC_WMSETL, WM_SETTEXT, 0, (LPARAM)testWmSettextL);
+		SendDlgItemMessage(hDlg, IDC_HWND, WM_SETTEXT, 0, (LPARAM)targetHwndStr);
+		SendDlgItemMessage(hDlg, IDC_CUSTOMMSG, WM_SETTEXT, 0, (LPARAM)customMsgStr);
+	}
 		return (INT_PTR)TRUE;
 
 	case WM_COMMAND:
-		if (LOWORD(wParam) == IDOK) //only save on OK
+		if (LOWORD(wParam) == IDOK) // only save on OK
 		{
-			//GetDlgItemText(hDlg, IDC_EDIT1, targetClassname, MAX_TEST_SIZE);
+			// GetDlgItemText(hDlg, IDC_EDIT1, targetClassname, MAX_TEST_SIZE);
 			GetDlgItemText(hDlg, IDC_TARGETPID, targetProcessId, MAX_TEST_SIZE);
 			GetDlgItemText(hDlg, IDC_WMCOMW, testWmCommandW, MAX_TEST_SIZE);
 			GetDlgItemText(hDlg, IDC_WMCOML, testWmCommandL, MAX_TEST_SIZE);
@@ -890,7 +1042,7 @@ INT_PTR CALLBACK DlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 			GetDlgItemText(hDlg, IDC_CUSTOMMSG, customMsgStr, MAX_TEST_SIZE);
 			// check filter options
 			filterWmCommand = (SendDlgItemMessage(hDlg, IDC_CHECK_CMD, BM_GETCHECK, 0, 0) == BST_CHECKED); // the hard way
-			filterWmNotify = (IsDlgButtonChecked(hDlg, IDC_CHECK_NOT) == BST_CHECKED);// the easy way
+			filterWmNotify = (IsDlgButtonChecked(hDlg, IDC_CHECK_NOT) == BST_CHECKED);					   // the easy way
 			filterAbove = (IsDlgButtonChecked(hDlg, IDC_CHECK_ABO) == BST_CHECKED);
 			filterCustom = (IsDlgButtonChecked(hDlg, IDC_CUSTOMCHK) == BST_CHECKED);
 

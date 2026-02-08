@@ -11,6 +11,12 @@
 #define IDI_MSGHOOKTEST                 107
 #define IDI_MSGHOOKICO                  107
 #define IDI_SMALL                       108
+#define IDI_PLAY                        110
+#define IDI_STOP                        111
+#define IDI_TARGET                      112
+#define IDI_SAVE                        113
+#define IDI_OPEN                        114
+#define IDI_CLEAR                       115
 #define IDC_MSGHOOKTEST                 109
 #define IDR_MAINFRAME                   128
 #define IDR_SETMH32                     128
@@ -32,6 +38,14 @@
 #define IDC_HWND                        1009
 #define IDC_CUSTOMCHK                   1010
 #define IDC_CUSTOMMSG                   1011
+#define ID_TB_PLAY                      3002
+#define ID_TB_STOP                      3003
+#define ID_TB_SAVE                      3004
+#define ID_TB_OPEN                      3005
+#define ID_TB_SPACER_HWND               3006
+#define ID_TB_SPACER_PID                3007
+#define ID_TB_SPACER_FINDER             3008
+#define ID_TB_CLEAR                     3009
 #define ID_FILE_STARTHOOK               32771
 #define ID_FILE_STOPHOOK                32772
 #define ID_TESTMSGS_WM                  32773

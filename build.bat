@@ -31,6 +31,7 @@ echo Verifying section flags:
 objdump -h MsgHook.dll | findstr SHARED
 
 echo building MsgHook.exe
+del resource.o 2>nul
 windres %current_dir%src\app\resource.rc -o resource.o
 g++ -o MsgHook.exe %current_dir%src\app\MsgHookWin.cpp resource.o -L. -static -lgdi32 -lcomctl32 -mwindows -municode -DUNICODE -D_UNICODE
 

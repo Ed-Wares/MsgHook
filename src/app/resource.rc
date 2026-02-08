@@ -39,8 +39,27 @@ MSGHOOK_FILE         DLL            "MsgHook.dll"
 
 // Icon with lowest ID value placed first to ensure application icon
 // remains consistent on all systems.
-IDI_MSGHOOKICO          ICON                    "MsgHookTest.ico"
-IDI_SMALL               ICON                    "small.ico"
+IDI_MSGHOOKICO          ICON                    "resources/msghook.ico"
+IDI_SMALL               ICON                    "resources/msghook.ico"
+IDI_PLAY                ICON                    "resources/play-outline.ico"
+IDI_STOP                ICON                    "resources/stop.ico"
+IDI_TARGET              ICON                    "resources/image-filter-center-focus.ico"
+IDI_SAVE                ICON                    "resources/content-save-all-outline.ico"
+IDI_OPEN                ICON                    "resources/forum-plus-outline.ico"
+IDI_CLEAR               ICON                    "resources/eraser.ico"
+
+// To get the "modern" flat toolbar style (TBSTYLE_FLAT) and high-quality alpha-blended icons working
+// --- ADD MANIFEST HERE ---
+#ifndef CREATEPROCESS_MANIFEST_RESOURCE_ID
+#define CREATEPROCESS_MANIFEST_RESOURCE_ID 1
+#endif
+#ifndef RT_MANIFEST
+#define RT_MANIFEST 24
+#endif
+
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "MsgHook.exe.manifest"
+// -------------------------
+
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -208,3 +227,4 @@ END
 
 /////////////////////////////////////////////////////////////////////////////
 #endif    // not APSTUDIO_INVOKED
+
