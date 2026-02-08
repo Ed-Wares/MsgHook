@@ -30,6 +30,23 @@ objcopy --set-section-flags .shared=alloc,load,data,share MsgHook.dll
 echo Verifying section flags:
 objdump -h MsgHook.dll | findstr SHARED
 
+
+echo build 32bit applications
+SET "OLD_PATH=%PATH%"
+SET "PATH=%MSYS_ROOT%\mingw32\bin;%PATH%"
+echo building MsgHook32.dll
+g++ -shared -o MsgHook32.dll %current_dir%src\dll\MsgHookDll.cpp -luser32 -lpsapi -static-libgcc -static-libstdc++ -DBUILDING_DLL -DUNICODE -D_UNICODE
+echo building MsgHookCli32.exe
+g++ -o MsgHookCli32.exe %current_dir%src\app\MsgHookCli.cpp -L. -municode -static -luser32 -DUNICODE -D_UNICODE 
+echo build test 32bit application
+g++.exe -o calculator32.exe %current_dir%src\test\BasicCalculator.cpp -mwindows -static -lcomctl32
+echo Setting section flags in 32.dll to make .shared section read-write-shared
+objcopy --set-section-flags .shared=alloc,load,data,share MsgHook32.dll
+icacls MsgHook32.dll /grant "ALL APPLICATION PACKAGES":(RX)
+REM restore orginal PATH, which had 64bit mingw first
+SET "PATH=%OLD_PATH%"
+
+
 echo building MsgHook.exe
 del resource.o 2>nul
 windres %current_dir%src\app\resource.rc -o resource.o
@@ -42,24 +59,6 @@ icacls MsgHook.dll /grant "ALL APPLICATION PACKAGES":(RX)
 
 echo build test 64bit application
 g++.exe -o calculator64.exe %current_dir%src\test\BasicCalculator.cpp -mwindows -static -lcomctl32
-
-echo build 32bit applications
-SET "OLD_PATH=%PATH%"
-SET "PATH=%MSYS_ROOT%\mingw32\bin;%PATH%"
-echo building MsgHook32.dll
-g++ -shared -o MsgHook32.dll %current_dir%src\dll\MsgHookDll.cpp -luser32 -lpsapi -static-libgcc -static-libstdc++ -DBUILDING_DLL -DUNICODE -D_UNICODE
-echo building MsgHookCli32.exe
-g++ -o MsgHookCli32.exe %current_dir%src\app\MsgHookCli.cpp -L. -municode -static -luser32 -DUNICODE -D_UNICODE 
-echo build test 32bit application
-g++.exe -o calculator32.exe %current_dir%src\test\BasicCalculator.cpp -mwindows -static -lcomctl32
-
-echo Setting section flags in 32.dll to make .shared section read-write-shared
-objcopy --set-section-flags .shared=alloc,load,data,share MsgHook32.dll
-icacls MsgHook32.dll /grant "ALL APPLICATION PACKAGES":(RX)
-
-REM restore orginal PATH, which had 64bit mingw first
-SET "PATH=%OLD_PATH%"
-
 
 REM -mwindows: Links as a GUI application (removes the black console window behind it).
 REM -static: Bundles libraries into the .exe so it runs on other computers without needing MinGW DLLs.

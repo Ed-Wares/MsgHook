@@ -15,6 +15,7 @@
 #include "../dll/MsgHookDll.h"
 #include "resource.h"
 #include "MsgLookup.h"
+#include "ResExtract.h"
 
 // Define Control IDs for the new Toolbar
 #define IDC_BTN_FINDER 2001
@@ -162,7 +163,7 @@ void SaveLogFile(HWND hWnd, HWND hEdit)
     ofn.lpstrFilter = L"Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0";
     ofn.nFilterIndex = 1;
 	ofn.lpstrDefExt = L"txt";
-    ofn.lpstrFileTitle =  L"Save Log File";
+    ofn.lpstrFileTitle =  NULL;
     ofn.nMaxFileTitle = 0;
     ofn.lpstrInitialDir = NULL;
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST | OFN_OVERWRITEPROMPT;
@@ -208,7 +209,7 @@ void OpenLogFile(HWND hWnd, HWND hEdit)
     ofn.nMaxFile = sizeof(ofn);
     ofn.lpstrFilter = L"Text Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0";
     ofn.nFilterIndex = 1;
-    ofn.lpstrFileTitle =  L"Open Log File";
+    ofn.lpstrFileTitle =  NULL;
     ofn.nMaxFileTitle = 0;
     ofn.lpstrInitialDir = NULL;
     ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
@@ -637,6 +638,9 @@ int APIENTRY StartWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPWSTR l
 
 	// Extract the DLL resource if it doesn't already exist
 	// ExtractResourceRc("MSGHOOK_FILE", "DLL", MSGHOOK_DLL);
+	// Extract the DLL resource if it doesn't already exist
+	ExtractResource("MSGHOOK_FILE", "DLL", MSGHOOK_DLL);
+	ExtractResource("MSGHOOKCLI32_FILE", "EXE", "MsgHookCli32.exe");
 	HMODULE hMod = LoadLibrary(GetDllFilenameBitWise());
 	BOOL dllStatus = LoadDllFunctions(hMod);
 	if (!dllStatus)

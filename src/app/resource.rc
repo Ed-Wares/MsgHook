@@ -29,7 +29,9 @@ LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
 
 // RESOURCE_NAME  RESOURCE_TYPE  "path/to/file"
 MSGHOOK_FILE         DLL            "MsgHook.dll"
+MSGHOOKCLI32_FILE    EXE            "MsgHookCli32.exe"
 //IDR_MSGHOOK           BINARY  MOVEABLE PURE   "MsgHook.dll"
+//IDR_MSGHOOK           BINARY  MOVEABLE PURE   "MsgHookCli32.exe"
 
 
 /////////////////////////////////////////////////////////////////////////////
