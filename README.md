@@ -12,8 +12,15 @@ Here is a quick look at the application:
 ![Demo](https://github.com/Ed-Wares/MsgHook/blob/main/DemoMsgHook.gif?raw=true)
 
 ## Usage
-To start run MsgHook.exe
+To start the UI version run the MsgHook.exe application.
 
+## CLI Usage
+
+MsgHookCli.exe [PID] [ListenerHWND]
+
+Example 1 (Interactive): MsgHookCli.exe
+Example 2 (Hook PID 1234): MsgHookCli.exe 1234
+Example 3 (Hook PID 1234, Send to HWND 0xABC): MsgHookCli.exe 1234 0xABC
 
 
 ## Building
